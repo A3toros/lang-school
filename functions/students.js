@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query, getPaginationParams } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -296,7 +296,7 @@ async function getStudentSchedule(event, user) {
       }
     }
 
-    const weekStart = week_start || require('./utils/database').getCurrentWeekStart()
+    const weekStart = week_start || getCurrentWeekStart()
 
     const queryText = `
       SELECT ss.*, t.name as teacher_name

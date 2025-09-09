@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -341,7 +341,7 @@ async function setFeaturedTeachers(event, user) {
       return errorResponse(400, 'teacher_ids must be an array')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')
@@ -441,7 +441,7 @@ async function reorderCourses(event, user) {
       return errorResponse(400, 'course_orders must be an array')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')

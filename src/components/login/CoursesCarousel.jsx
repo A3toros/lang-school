@@ -28,6 +28,15 @@ const CoursesCarousel = ({ courses = [] }) => {
     )
   }
 
+  if (!courses || courses.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-3xl font-bold text-neutral-800 mb-4">Our Courses</h2>
+        <p className="text-neutral-600">No courses available at the moment.</p>
+      </div>
+    )
+  }
+
   const course = courses[currentCourse]
 
   return (

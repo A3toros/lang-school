@@ -101,7 +101,6 @@ lang-school/
 ### Complete File Structure
 ```
 lang-school/
-├── public/
 │   ├── index.html
 │   └── pics/
 │       ├── teachers/

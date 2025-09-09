@@ -30,6 +30,11 @@ class ApiService {
       const response = await fetch(url, config)
       
       if (!response.ok) {
+        // Handle 502 Bad Gateway (Netlify Functions not deployed)
+        if (response.status === 502) {
+          throw new Error('Service temporarily unavailable. Please try again later.')
+        }
+        
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
@@ -37,6 +42,16 @@ class ApiService {
       return await response.json()
     } catch (error) {
       console.error(`API request failed: ${endpoint}`, error)
+      
+      // Return a structured error response for better handling
+      if (error.message.includes('Service temporarily unavailable')) {
+        return {
+          success: false,
+          error: 'Service temporarily unavailable',
+          status: 502
+        }
+      }
+      
       throw error
     }
   }

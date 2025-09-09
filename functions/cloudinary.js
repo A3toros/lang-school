@@ -1,19 +1,15 @@
-const { verifyToken, errorResponse, successResponse } = require('./utils/database')
-const cloudinary = require('cloudinary').v2
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
+import cloudinary from 'cloudinary'
 
 // Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-})
+cloudinary.config(process.env.CLOUDINARY_URL)
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -141,7 +137,6 @@ async function uploadTeacherPhoto(event, user) {
     const result = await cloudinary.uploader.upload(image, uploadOptions)
 
     // Update teacher record in database
-    const { query } = require('./utils/database')
     await query(
       'UPDATE teachers SET photo_url = $1, photo_public_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
       [result.secure_url, result.public_id, teacher_id]
@@ -183,7 +178,6 @@ async function uploadCourseImage(event, user) {
     const result = await cloudinary.uploader.upload(image, uploadOptions)
 
     // Update course record in database
-    const { query } = require('./utils/database')
     await query(
       'UPDATE courses SET background_image = $1, background_image_public_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
       [result.secure_url, result.public_id, course_id]
@@ -225,7 +219,6 @@ async function uploadMissionBanner(event, user) {
     const result = await cloudinary.uploader.upload(image, uploadOptions)
 
     // Update mission content in database
-    const { query } = require('./utils/database')
     await query(
       'UPDATE mission_content SET banner_image = $1, banner_image_public_id = $2, updated_at = CURRENT_TIMESTAMP WHERE is_active = true',
       [result.secure_url, result.public_id]

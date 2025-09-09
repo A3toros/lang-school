@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query, getPaginationParams } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -383,7 +383,7 @@ async function getReportsByDate(event, user) {
 async function getWeeklyReports(event, user) {
   try {
     const date = event.path.split('/')[4]
-    const weekStart = require('./utils/database').getWeekStart(date)
+    const weekStart = getWeekStart(date)
     const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     let queryText = `
@@ -457,7 +457,7 @@ async function bulkCreateReports(event, user) {
       return errorResponse(400, 'reports must be an array')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')

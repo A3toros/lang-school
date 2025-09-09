@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -171,7 +171,7 @@ async function bulkResetPasswords(event, user) {
 
     const generatedPassword = new_password || generateRandomPassword()
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')

@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query, getPaginationParams } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -352,7 +352,7 @@ async function getAttendanceStats(event, user) {
 async function getWeeklyAttendance(event, user) {
   try {
     const date = event.path.split('/')[4]
-    const weekStart = require('./utils/database').getWeekStart(date)
+    const weekStart = getWeekStart(date)
 
     let queryText = `
       SELECT ss.*, s.name as student_name, t.name as teacher_name
@@ -431,7 +431,7 @@ async function bulkMarkAttendance(event, user) {
       return errorResponse(400, 'attendance_updates must be an array')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')

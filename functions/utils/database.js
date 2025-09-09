@@ -1,4 +1,5 @@
-const { Pool } = require('pg')
+import { Pool } from 'pg'
+import jwt from 'jsonwebtoken'
 
 // Database connection pool
 let pool = null
@@ -27,7 +28,6 @@ const corsHeaders = {
 
 // JWT verification helper
 const verifyToken = (event) => {
-  const jwt = require('jsonwebtoken')
   const authHeader = event.headers.authorization || event.headers.Authorization
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -90,7 +90,7 @@ const getWeekStart = (date) => {
   return monday.toISOString().split('T')[0]
 }
 
-module.exports = {
+export {
   getPool,
   corsHeaders,
   verifyToken,

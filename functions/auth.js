@@ -1,5 +1,5 @@
-const { Pool } = require('pg')
-const jwt = require('jsonwebtoken')
+import { Pool } from 'pg'
+import jwt from 'jsonwebtoken'
 
 // Database connection
 const pool = new Pool({
@@ -20,7 +20,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
 }
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {

@@ -273,7 +273,7 @@ const validateScheduleData = (scheduleData) => {
   return validateForm(scheduleData, rules)
 }
 
-module.exports = {
+export {
   validateEmail,
   validatePassword,
   calculatePasswordStrength,

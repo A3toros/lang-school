@@ -102,6 +102,12 @@ const LoginForm = ({ onLogin, error = '' }) => {
           <p><strong>Admin:</strong> admin / admin123</p>
           <p><strong>Teacher:</strong> sarah.johnson / teacher123</p>
         </div>
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-xs text-yellow-700">
+            <strong>Note:</strong> Authentication is disabled in development mode. 
+            The app will show fallback data without backend APIs.
+          </p>
+        </div>
       </div>
     </motion.div>
   )

@@ -1,11 +1,11 @@
-const { verifyToken, errorResponse, successResponse, query, getCurrentWeekStart, getWeekStart } = require('./utils/database')
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: require('./utils/database').corsHeaders,
+      headers: corsHeaders,
       body: ''
     }
   }
@@ -244,7 +244,7 @@ async function bulkUpdateSchedules(event, user) {
       return errorResponse(400, 'Schedules must be an array')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')
@@ -430,7 +430,7 @@ async function saveWeekSchedule(event, user) {
       return errorResponse(400, 'week_start_date and schedules array are required')
     }
 
-    const client = await require('./utils/database').getPool().connect()
+    const client = await getPool().connect()
     
     try {
       await client.query('BEGIN')
