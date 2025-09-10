@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 // Validation utility functions for Netlify Functions
 
 const validateEmail = (email) => {
@@ -273,7 +275,7 @@ const validateScheduleData = (scheduleData) => {
   return validateForm(scheduleData, rules)
 }
 
-export {
+module.exports = {
   validateEmail,
   validatePassword,
   calculatePasswordStrength,

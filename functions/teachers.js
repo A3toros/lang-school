@@ -1,6 +1,9 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
+require('dotenv').config();
 
-export const handler = async (event, context) => {
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool } = require('./utils/database.js')
+const { deleteImageByPublicId } = require('./cloudinary.js')
+
+exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -36,6 +39,8 @@ export const handler = async (event, context) => {
       return await createTeacher(event, user)
     } else if (path.match(/^\/api\/teachers\/\d+$/) && method === 'PUT') {
       return await updateTeacher(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/deactivate$/) && method === 'POST') {
+      return await deactivateTeacher(event, user)
     } else if (path.match(/^\/api\/teachers\/\d+$/) && method === 'DELETE') {
       return await deleteTeacher(event, user)
     } else if (path.match(/^\/api\/teachers\/\d+\/reactivate$/) && method === 'POST') {
@@ -80,21 +85,30 @@ async function getTeachers(event, user) {
   })
 
   try {
+    const { status } = event.queryStringParameters || {}
     let queryText, params
 
     if (user.role === 'admin') {
-      console.log('📋 [TEACHERS] Admin requesting all teachers')
-      // Admin can see all teachers
+      console.log('📋 [TEACHERS] Admin requesting teachers', { status })
+      // Admin can see all teachers with status filtering
       queryText = `
         SELECT t.*, u.username, u.is_active as user_active,
                COUNT(s.id) as student_count
         FROM teachers t
         LEFT JOIN users u ON t.id = u.teacher_id
         LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
-        WHERE t.is_active = true
-        GROUP BY t.id, u.username, u.is_active
-        ORDER BY t.name
+        WHERE 1=1
       `
+      
+      // Add status filter
+      if (status === 'active') {
+        queryText += ` AND t.is_active = true`
+      } else if (status === 'inactive') {
+        queryText += ` AND t.is_active = false`
+      }
+      // If no status specified, show all teachers
+      
+      queryText += ` GROUP BY t.id, u.username, u.is_active ORDER BY t.name`
       params = []
     } else if (user.role === 'teacher') {
       console.log('📋 [TEACHERS] Teacher requesting own data', { teacherId: user.teacherId })
@@ -255,7 +269,141 @@ async function updateTeacher(event, user) {
   }
 }
 
-// Delete teacher (soft delete)
+// Deactivate teacher (soft delete - preserve all data)
+async function deactivateTeacher(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const teacherId = parseInt(event.path.split('/')[3])
+    const client = await getPool().connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      // 1. Get teacher's photo info before deactivation
+      const teacherResult = await client.query(
+        'SELECT photo_url, photo_public_id FROM teachers WHERE id = $1',
+        [teacherId]
+      )
+      
+      if (teacherResult.rows.length === 0) {
+        await client.query('ROLLBACK')
+        return errorResponse(404, 'Teacher not found')
+      }
+      
+      const { photo_url, photo_public_id } = teacherResult.rows[0]
+      
+      // 2. Set students to unassigned (preserve student data, just remove teacher assignment)
+      await client.query(
+        'UPDATE students SET teacher_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE teacher_id = $1',
+        [teacherId]
+      )
+      
+      // 3. DELETE future schedules (not just set teacher_id = NULL)
+      const currentDate = new Date().toISOString().split('T')[0]
+      await client.query(
+        `DELETE FROM student_schedules 
+         WHERE teacher_id = $1 AND week_start_date >= $2`,
+        [teacherId, currentDate]
+      )
+      
+      // 4. Soft delete teacher and user
+      await client.query('UPDATE teachers SET is_active = false WHERE id = $1', [teacherId])
+      await client.query('UPDATE users SET is_active = false WHERE teacher_id = $1', [teacherId])
+      
+      await client.query('COMMIT')
+      
+      return successResponse({ 
+        message: 'Teacher deactivated successfully - future schedules removed',
+        data_preserved: {
+          lesson_reports: 'Preserved (historical data)',
+          schedule_history: 'Preserved (audit trail)',
+          historical_schedules: 'Preserved (attendance records)',
+          students: 'Unassigned (teacher_id = NULL)',
+          future_schedules: 'DELETED (not needed)',
+          schedule_templates: 'DEACTIVATED (prevent regeneration)'
+        }
+      })
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+    
+    // Clean up optional tables (after successful DB transaction)
+    try {
+      const cleanupClient = await getPool().connect()
+      
+      // Deactivate schedule templates
+      try {
+        await cleanupClient.query(
+          'UPDATE schedule_templates SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE teacher_id = $1',
+          [teacherId]
+        )
+      } catch (e) {
+        console.log('🔍 [DEACTIVATE_TEACHER] Schedule templates update failed (table may not exist):', e.message)
+      }
+      
+      // Log deactivation in schedule history
+      try {
+        await cleanupClient.query(
+          `INSERT INTO schedule_history (action, old_teacher_id, new_teacher_id, changed_by, notes)
+           VALUES ('deactivated', $1, NULL, $2, 'Teacher deactivated - future schedules removed')`,
+          [teacherId, user.userId]
+        )
+      } catch (e) {
+        console.log('🔍 [DEACTIVATE_TEACHER] Schedule history insert failed (table may not exist):', e.message)
+      }
+      
+      // Remove from featured teachers
+      try {
+        await cleanupClient.query('DELETE FROM featured_teachers WHERE teacher_id = $1', [teacherId])
+      } catch (e) {
+        console.log('🔍 [DEACTIVATE_TEACHER] Featured teachers cleanup failed (table may not exist):', e.message)
+      }
+      
+      cleanupClient.release()
+    } catch (e) {
+      console.log('🔍 [DEACTIVATE_TEACHER] Cleanup operations failed:', e.message)
+    }
+    
+    // Delete photo from Cloudinary (after successful DB transaction and client release)
+    let photoDeleted = false
+    if (photo_public_id) {
+      try {
+        const cloudinaryResult = await deleteImageByPublicId(photo_public_id)
+        photoDeleted = cloudinaryResult.success
+        if (!cloudinaryResult.success) {
+          console.error('Failed to delete photo from Cloudinary:', cloudinaryResult.error)
+        }
+      } catch (error) {
+        console.error('Cloudinary deletion error:', error)
+      }
+    }
+    
+    // Update response with photo deletion status
+    return successResponse({ 
+      message: 'Teacher deactivated successfully - future schedules removed',
+      photo_deleted: photoDeleted,
+      data_preserved: {
+        lesson_reports: 'Preserved (historical data)',
+        schedule_history: 'Preserved (audit trail)',
+        historical_schedules: 'Preserved (attendance records)',
+        students: 'Unassigned (teacher_id = NULL)',
+        future_schedules: 'DELETED (not needed)',
+        schedule_templates: 'DEACTIVATED (prevent regeneration)'
+      }
+    })
+  } catch (error) {
+    console.error('Deactivate teacher error:', error)
+    return errorResponse(500, 'Failed to deactivate teacher')
+  }
+}
+
+// Delete teacher (hard delete - remove all data)
 async function deleteTeacher(event, user) {
   try {
     if (user.role !== 'admin') {
@@ -263,12 +411,86 @@ async function deleteTeacher(event, user) {
     }
 
     const teacherId = parseInt(event.path.split('/')[3])
-
-    // Soft delete teacher and user
-    await query('UPDATE teachers SET is_active = false WHERE id = $1', [teacherId])
-    await query('UPDATE users SET is_active = false WHERE teacher_id = $1', [teacherId])
-
-    return successResponse({ message: 'Teacher deleted successfully' })
+    const client = await getPool().connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      // 1. Get teacher's photo info before deletion
+      const teacherResult = await client.query(
+        'SELECT photo_url, photo_public_id FROM teachers WHERE id = $1',
+        [teacherId]
+      )
+      
+      if (teacherResult.rows.length === 0) {
+        await client.query('ROLLBACK')
+        return errorResponse(404, 'Teacher not found')
+      }
+      
+      const { photo_url, photo_public_id } = teacherResult.rows[0]
+      
+      // 2. Set students to unassigned (preserve student data, just remove teacher assignment)
+      await client.query(
+        'UPDATE students SET teacher_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE teacher_id = $1',
+        [teacherId]
+      )
+      
+      // 3. Delete all schedules (past and future) - CASCADE will handle this
+      await client.query('DELETE FROM student_schedules WHERE teacher_id = $1', [teacherId])
+      
+      // 4. Delete all lesson reports - CASCADE will handle this
+      await client.query('DELETE FROM lesson_reports WHERE teacher_id = $1', [teacherId])
+      
+      // 5. Delete schedule templates
+      await client.query('DELETE FROM schedule_templates WHERE teacher_id = $1', [teacherId])
+      
+      // 6. Delete from featured teachers
+      await client.query('DELETE FROM featured_teachers WHERE teacher_id = $1', [teacherId])
+      
+      // 7. Delete schedule history entries
+      await client.query('DELETE FROM schedule_history WHERE old_teacher_id = $1 OR new_teacher_id = $2', [teacherId, teacherId])
+      
+      // 8. Delete user account (CASCADE will handle this)
+      await client.query('DELETE FROM users WHERE teacher_id = $1', [teacherId])
+      
+      // 9. Delete teacher record (CASCADE will handle related data)
+      await client.query('DELETE FROM teachers WHERE id = $1', [teacherId])
+      
+      await client.query('COMMIT')
+      
+      // 10. Delete photo from Cloudinary (after successful DB transaction)
+      let photoDeleted = false
+      if (photo_public_id) {
+        try {
+          const cloudinaryResult = await deleteImageByPublicId(photo_public_id)
+          photoDeleted = cloudinaryResult.success
+          if (!cloudinaryResult.success) {
+            console.error('Failed to delete photo from Cloudinary:', cloudinaryResult.error)
+          }
+        } catch (error) {
+          console.error('Cloudinary deletion error:', error)
+        }
+      }
+      
+      return successResponse({ 
+        message: 'Teacher deleted successfully - all data removed',
+        photo_deleted: photoDeleted,
+        data_deleted: {
+          teacher_record: 'Deleted',
+          user_account: 'Deleted',
+          lesson_reports: 'Deleted',
+          schedules: 'Deleted',
+          schedule_templates: 'Deleted',
+          featured_teachers: 'Deleted',
+          schedule_history: 'Deleted'
+        }
+      })
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
   } catch (error) {
     console.error('Delete teacher error:', error)
     return errorResponse(500, 'Failed to delete teacher')
@@ -344,7 +566,7 @@ async function getTeacherSchedule(event, user) {
     `
     
     const result = await query(queryText, [teacherId, weekStart])
-    return successResponse({ schedule: result.rows })
+    return successResponse({ schedules: result.rows })
   } catch (error) {
     console.error('Get teacher schedule error:', error)
     return errorResponse(500, 'Failed to fetch schedule')

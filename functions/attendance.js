@@ -1,6 +1,8 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
+require('dotenv').config();
 
-export const handler = async (event, context) => {
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
+
+exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -63,7 +65,7 @@ async function getAttendance(event, user) {
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
       JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
         AND s.is_active = true
         AND t.is_active = true
     `
@@ -115,6 +117,8 @@ async function getAttendance(event, user) {
 
 // Mark lesson attendance
 async function markAttendance(event, user) {
+  const client = await getPool().connect()
+  
   try {
     const { schedule_id, status, attendance_date } = JSON.parse(event.body)
 
@@ -122,17 +126,20 @@ async function markAttendance(event, user) {
       return errorResponse(400, 'schedule_id and status are required')
     }
 
-    if (!['completed', 'absent', 'scheduled'].includes(status)) {
-      return errorResponse(400, 'Invalid status. Must be completed, absent, or scheduled')
+    if (!['completed', 'absent', 'absent_warned', 'scheduled'].includes(status)) {
+      return errorResponse(400, 'Invalid status. Must be completed, absent, absent_warned, or scheduled')
     }
 
-    // Check permissions
-    const scheduleCheck = await query(
-      'SELECT teacher_id, student_id FROM student_schedules WHERE id = $1',
+    await client.query('BEGIN')
+
+    // Check permissions and get schedule details
+    const scheduleCheck = await client.query(
+      'SELECT teacher_id, student_id, time_slot FROM student_schedules WHERE id = $1',
       [schedule_id]
     )
 
     if (scheduleCheck.rows.length === 0) {
+      await client.query('ROLLBACK')
       return errorResponse(404, 'Schedule not found')
     }
 
@@ -140,9 +147,13 @@ async function markAttendance(event, user) {
 
     // Teachers can only mark their own students' attendance
     if (user.role === 'teacher' && schedule.teacher_id !== user.teacherId) {
+      await client.query('ROLLBACK')
       return errorResponse(403, 'Forbidden')
     }
 
+    const attendanceDate = attendance_date || new Date().toISOString().split('T')[0]
+
+    // Update attendance status
     const queryText = `
       UPDATE student_schedules 
       SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
@@ -150,20 +161,64 @@ async function markAttendance(event, user) {
       RETURNING *
     `
     
-    const result = await query(queryText, [status, attendance_date || new Date().toISOString().split('T')[0], schedule_id])
+    const result = await client.query(queryText, [status, attendanceDate, schedule_id])
     
-    // If marking as completed or absent, also add to student_lessons
+    // If marking as completed, add to student_lessons
     if (status === 'completed') {
-      await query(
+      await client.query(
         'INSERT INTO student_lessons (student_id, lesson_date, time_slot) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-        [schedule.student_id, attendance_date || new Date().toISOString().split('T')[0], result.rows[0].time_slot]
+        [schedule.student_id, attendanceDate, schedule.time_slot]
       )
     }
 
+    // Check for consecutive absences and auto-warn if needed
+    if (status === 'absent') {
+      const consecutiveAbsences = await client.query(
+        `SELECT COUNT(*) as consecutive_count
+         FROM student_schedules 
+         WHERE student_id = $1 
+           AND attendance_status = 'absent' 
+           AND attendance_date >= $2 - INTERVAL '7 days'
+           AND attendance_date <= $2
+         ORDER BY attendance_date DESC`,
+        [schedule.student_id, attendanceDate]
+      )
+
+      const consecutiveCount = parseInt(consecutiveAbsences.rows[0].consecutive_count)
+      
+      // If 2+ consecutive absences, auto-update to absent_warned
+      if (consecutiveCount >= 2) {
+        await client.query(
+          `UPDATE student_schedules 
+           SET attendance_status = 'absent_warned', updated_at = CURRENT_TIMESTAMP
+           WHERE student_id = $1 
+             AND attendance_status = 'absent' 
+             AND attendance_date >= $2 - INTERVAL '7 days'
+             AND attendance_date <= $2`,
+          [schedule.student_id, attendanceDate]
+        )
+
+        // Log warning in schedule_history
+        try {
+          await client.query(
+            `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
+             VALUES ($1, 'warning', $2, $2, $3, 'Auto-warning for consecutive absences')`,
+            [schedule_id, schedule.teacher_id, user.userId]
+          )
+        } catch (e) {
+          // ignore if history table not present
+        }
+      }
+    }
+
+    await client.query('COMMIT')
     return successResponse({ attendance: result.rows[0] })
   } catch (error) {
+    await client.query('ROLLBACK')
     console.error('Mark attendance error:', error)
     return errorResponse(500, 'Failed to mark attendance')
+  } finally {
+    client.release()
   }
 }
 
@@ -177,8 +232,8 @@ async function updateAttendance(event, user) {
       return errorResponse(400, 'status is required')
     }
 
-    if (!['completed', 'absent', 'scheduled'].includes(status)) {
-      return errorResponse(400, 'Invalid status. Must be completed, absent, or scheduled')
+    if (!['completed', 'absent', 'absent_warned', 'scheduled'].includes(status)) {
+      return errorResponse(400, 'Invalid status. Must be completed, absent, absent_warned, or scheduled')
     }
 
     // Check permissions
@@ -488,7 +543,7 @@ async function exportAttendance(event, user) {
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
       JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
         AND s.is_active = true AND t.is_active = true
     `
     let params = []

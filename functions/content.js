@@ -1,6 +1,8 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool } from './utils/database.js'
+require('dotenv').config();
 
-export const handler = async (event, context) => {
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool  } = require('./utils/database.js')
+
+exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {

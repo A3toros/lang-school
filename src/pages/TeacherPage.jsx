@@ -157,7 +157,7 @@ const TeacherPage = () => {
               <h1 className="text-xl font-semibold text-gray-900">Teacher Dashboard</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">Welcome, {user?.teacher_name || user?.username}</span>
+              <span className="text-sm text-gray-700">Welcome, {user?.teacher_name || user?.username}. Let's talk!</span>
               <button
                 onClick={logout}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors duration-200"

@@ -195,16 +195,9 @@ const AddTeacherModal = ({
             onError={handleImageError}
             folder="lang-school/teachers"
             className="w-full"
+            uploadedImageUrl={formData.photo_url}
+            showUploadArea={!formData.photo_url}
           />
-          {formData.photo_url && (
-            <div className="mt-2">
-              <img
-                src={formData.photo_url}
-                alt="Teacher preview"
-                className="w-20 h-20 object-cover rounded-lg"
-              />
-            </div>
-          )}
         </div>
 
         <div className="flex space-x-3 pt-4">

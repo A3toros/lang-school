@@ -1,6 +1,8 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
+require('dotenv').config();
 
-export const handler = async (event, context) => {
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool } = require('./utils/database.js')
+
+exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -31,6 +33,8 @@ export const handler = async (event, context) => {
       return await createStudent(event, user)
     } else if (path.match(/^\/api\/students\/\d+$/) && method === 'PUT') {
       return await updateStudent(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/deactivate$/) && method === 'POST') {
+      return await deactivateStudent(event, user)
     } else if (path.match(/^\/api\/students\/\d+$/) && method === 'DELETE') {
       return await deleteStudent(event, user)
     } else if (path.match(/^\/api\/students\/\d+\/reactivate$/) && method === 'POST') {
@@ -69,18 +73,36 @@ export const handler = async (event, context) => {
 // Get all students with filtering/pagination
 async function getStudents(event, user) {
   try {
-    const { name, date_from, date_to, lessons_min, lessons_max, page, limit } = event.queryStringParameters || {}
+    const { name, date_from, date_to, lessons_min, lessons_max, sort_by, sort_order, page, limit, status } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
+    // Build lesson count query based on date range
+    let lessonCountQuery = 'COUNT(sl.id) as lesson_count'
+    let params = []
+    let paramCount = 0
+    
+    // If dates are provided, filter by date range
+    if (date_from && date_to) {
+      lessonCountQuery = `COUNT(CASE WHEN sl.lesson_date >= $${++paramCount} AND sl.lesson_date <= $${++paramCount} THEN sl.id END) as lesson_count`
+      params.push(date_from, date_to)
+    }
+    // If no dates provided, show all time data (default behavior)
+
     let queryText = `
-      SELECT s.*, t.name as teacher_name, COUNT(sl.id) as lesson_count
+      SELECT s.*, t.name as teacher_name, ${lessonCountQuery}
       FROM students s
       LEFT JOIN teachers t ON s.teacher_id = t.id
       LEFT JOIN student_lessons sl ON s.id = sl.student_id
-      WHERE s.is_active = true
+      WHERE 1=1
     `
-    let params = []
-    let paramCount = 0
+
+    // Add status filter
+    if (status === 'active') {
+      queryText += ` AND s.is_active = true`
+    } else if (status === 'inactive') {
+      queryText += ` AND s.is_active = false`
+    }
+    // If no status specified, show all students
 
     // Add filters
     if (name) {
@@ -112,11 +134,90 @@ async function getStudents(event, user) {
       }
     }
 
-    queryText += ` ORDER BY s.added_date DESC LIMIT $${++paramCount} OFFSET $${++paramCount}`
+    // Add sorting
+    const validSortKeys = ['name', 'teacher_name', 'lessons_per_week', 'lesson_count', 'added_date', 'is_active']
+    const sortKey = validSortKeys.includes(sort_by) ? sort_by : 'added_date'
+    const sortDirection = sort_order === 'asc' ? 'ASC' : 'DESC'
+    
+    // Map frontend sort keys to database column names
+    const sortColumnMap = {
+      'name': 's.name',
+      'teacher_name': 't.name',
+      'lessons_per_week': 's.lessons_per_week',
+      'lesson_count': 'lesson_count',
+      'added_date': 's.added_date',
+      'is_active': 's.is_active'
+    }
+    
+    const sortColumn = sortColumnMap[sortKey] || 's.added_date'
+    
+    queryText += ` ORDER BY ${sortColumn} ${sortDirection} LIMIT $${++paramCount} OFFSET $${++paramCount}`
     params.push(limit, offset)
 
     const result = await query(queryText, params)
-    return successResponse({ students: result.rows })
+    
+    // Get total count for pagination
+    let countQuery = `
+      SELECT COUNT(DISTINCT s.id) as total
+      FROM students s
+      LEFT JOIN teachers t ON s.teacher_id = t.id
+      LEFT JOIN student_lessons sl ON s.id = sl.student_id
+      WHERE 1=1
+    `
+    let countParams = []
+    let countParamCount = 0
+
+    // Add status filter for count
+    if (status === 'active') {
+      countQuery += ` AND s.is_active = true`
+    } else if (status === 'inactive') {
+      countQuery += ` AND s.is_active = false`
+    }
+    // If no status specified, show all students
+
+    // Add same filters for count
+    if (name) {
+      countQuery += ` AND s.name ILIKE $${++countParamCount}`
+      countParams.push(`%${name}%`)
+    }
+    if (date_from) {
+      countQuery += ` AND s.added_date >= $${++countParamCount}`
+      countParams.push(date_from)
+    }
+    if (date_to) {
+      countQuery += ` AND s.added_date <= $${++countParamCount}`
+      countParams.push(date_to)
+    }
+    if (lessons_min || lessons_max) {
+      countQuery += ` GROUP BY s.id`
+      if (lessons_min || lessons_max) {
+        countQuery += ` HAVING COUNT(sl.id)`
+        if (lessons_min) {
+          countQuery += ` >= $${++countParamCount}`
+          countParams.push(parseInt(lessons_min))
+        }
+        if (lessons_max) {
+          countQuery += ` <= $${++countParamCount}`
+          countParams.push(parseInt(lessons_max))
+        }
+      }
+    }
+
+    const countResult = await query(countQuery, countParams)
+    const total = countResult.rows[0]?.total || 0
+
+    console.log('🔍 [GET_STUDENTS] Count query debug:', { 
+      status, 
+      countQuery, 
+      countParams, 
+      total: parseInt(total),
+      studentsCount: result.rows.length 
+    })
+
+    return successResponse({ 
+      students: result.rows,
+      total: parseInt(total)
+    })
   } catch (error) {
     console.error('Get students error:', error)
     return errorResponse(500, 'Failed to fetch students')
@@ -195,7 +296,7 @@ async function createStudent(event, user) {
 async function updateStudent(event, user) {
   try {
     const studentId = parseInt(event.path.split('/')[3])
-    const { name, teacher_id, lessons_per_week } = JSON.parse(event.body)
+    const { name, teacher_id, lessons_per_week, is_active } = JSON.parse(event.body)
 
     // Check permissions - teachers can only update their own students
     if (user.role === 'teacher') {
@@ -213,6 +314,46 @@ async function updateStudent(event, user) {
       }
     }
 
+    // Handle status change
+    if (is_active !== undefined) {
+      if (is_active === false) {
+        // Deactivating student - remove from teacher assignment
+        const queryText = `
+          UPDATE students 
+          SET name = $1, teacher_id = NULL, lessons_per_week = $2, is_active = false, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3
+          RETURNING *
+        `
+        const result = await query(queryText, [name, lessons_per_week, studentId])
+        
+        if (result.rows.length === 0) {
+          return errorResponse(404, 'Student not found')
+        }
+        
+        return successResponse(result.rows[0])
+      } else if (is_active === true) {
+        // Reactivating student - require teacher assignment
+        if (!teacher_id) {
+          return errorResponse(400, 'Teacher assignment required when reactivating student')
+        }
+        
+        const queryText = `
+          UPDATE students 
+          SET name = $1, teacher_id = $2, lessons_per_week = $3, is_active = true, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4
+          RETURNING *
+        `
+        const result = await query(queryText, [name, teacher_id, lessons_per_week, studentId])
+        
+        if (result.rows.length === 0) {
+          return errorResponse(404, 'Student not found')
+        }
+        
+        return successResponse(result.rows[0])
+      }
+    }
+
+    // Regular update (no status change)
     const queryText = `
       UPDATE students 
       SET name = $1, teacher_id = $2, lessons_per_week = $3, updated_at = CURRENT_TIMESTAMP
@@ -233,7 +374,104 @@ async function updateStudent(event, user) {
   }
 }
 
-// Delete student (soft delete)
+// Deactivate student (soft delete - preserve all data)
+async function deactivateStudent(event, user) {
+  console.log('🚨 [DEACTIVATE] FUNCTION CALLED - Student ID:', event.path.split('/')[3])
+  try {
+    const studentId = parseInt(event.path.split('/')[3])
+    console.log('🚨 [DEACTIVATE] Parsed studentId:', studentId)
+
+    // Check permissions
+    if (user.role === 'teacher') {
+      const studentCheck = await query(
+        'SELECT teacher_id FROM students WHERE id = $1',
+        [studentId]
+      )
+      
+      if (studentCheck.rows.length === 0) {
+        return errorResponse(404, 'Student not found')
+      }
+      
+      if (studentCheck.rows[0].teacher_id !== user.teacherId) {
+        return errorResponse(403, 'Forbidden')
+      }
+    }
+
+    const client = await getPool().connect()
+    console.log('🔍 [DEACTIVATE] Database client connected')
+    
+    try {
+      await client.query('BEGIN')
+      console.log('🔍 [DEACTIVATE] Transaction started')
+      
+      // 1. Set student to unassigned and deactivated
+      const updateResult = await client.query(
+        'UPDATE students SET teacher_id = NULL, is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [studentId]
+      )
+      console.log('🚨 [DEACTIVATE] Student update result:', { studentId, rowsAffected: updateResult.rowCount })
+      
+      // 2. DELETE future schedules (not just set teacher_id = NULL)
+      const currentDate = new Date().toISOString().split('T')[0]
+      await client.query(
+        `DELETE FROM student_schedules 
+         WHERE student_id = $1 AND week_start_date >= $2`,
+        [studentId, currentDate]
+      )
+      
+      // 3. DEACTIVATE schedule templates (prevent regeneration)
+      await client.query(
+        'UPDATE schedule_templates SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE student_id = $1',
+        [studentId]
+      )
+      
+      // 4. Log deactivation in schedule history
+      try {
+        await client.query(
+          `INSERT INTO schedule_history (action, old_teacher_id, new_teacher_id, changed_by, notes)
+           VALUES ('deactivated', NULL, NULL, $1, 'Student deactivated - future schedules removed')`,
+          [user.userId]
+        )
+      } catch (e) {
+        // history table may not exist yet; ignore
+      }
+      
+      await client.query('COMMIT')
+      console.log('🚨 [DEACTIVATE] Transaction committed successfully for student:', studentId)
+      
+      // Verify the deactivation worked by checking the database immediately
+      try {
+        const verifyResult = await client.query('SELECT id, name, is_active, teacher_id FROM students WHERE id = $1', [studentId])
+        console.log('🔍 [DEACTIVATE] Verification query result:', verifyResult.rows[0])
+      } catch (verifyError) {
+        console.error('🚨 [DEACTIVATE] Verification query failed:', verifyError)
+      }
+      
+      return successResponse({ 
+        message: 'Student deactivated successfully - future schedules removed',
+        data_preserved: {
+          lesson_reports: 'Preserved (historical data)',
+          schedule_history: 'Preserved (audit trail)',
+          historical_schedules: 'Preserved (attendance records)',
+          student_lessons: 'Preserved (lesson tracking)',
+          future_schedules: 'DELETED (not needed)',
+          schedule_templates: 'DEACTIVATED (prevent regeneration)'
+        }
+      })
+    } catch (error) {
+      console.error('🚨 [DEACTIVATE] Transaction error, rolling back:', error)
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error('🚨 [DEACTIVATE] Outer catch - Deactivate student error:', error)
+    return errorResponse(500, 'Failed to deactivate student')
+  }
+}
+
+// Delete student (hard delete - remove all data)
 async function deleteStudent(event, user) {
   try {
     const studentId = parseInt(event.path.split('/')[3])
@@ -254,8 +492,51 @@ async function deleteStudent(event, user) {
       }
     }
 
-    await query('UPDATE students SET is_active = false WHERE id = $1', [studentId])
-    return successResponse({ message: 'Student deleted successfully' })
+    const client = await getPool().connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      // 1. Update schedule history to set schedule_id = NULL (preserve audit trail)
+      await client.query(
+        'UPDATE schedule_history SET schedule_id = NULL WHERE schedule_id IN (SELECT id FROM student_schedules WHERE student_id = $1)',
+        [studentId]
+      )
+      
+      // 2. Delete all schedules (CASCADE will handle this)
+      await client.query('DELETE FROM student_schedules WHERE student_id = $1', [studentId])
+      
+      // 3. Delete all lesson reports (CASCADE will handle this)
+      await client.query('DELETE FROM lesson_reports WHERE student_id = $1', [studentId])
+      
+      // 4. Delete all student lessons (CASCADE will handle this)
+      await client.query('DELETE FROM student_lessons WHERE student_id = $1', [studentId])
+      
+      // 5. Delete schedule templates (CASCADE will handle this)
+      await client.query('DELETE FROM schedule_templates WHERE student_id = $1', [studentId])
+      
+      // 6. Delete student record (CASCADE will handle related data)
+      await client.query('DELETE FROM students WHERE id = $1', [studentId])
+      
+      await client.query('COMMIT')
+      
+      return successResponse({ 
+        message: 'Student deleted successfully - all data removed',
+        data_deleted: {
+          student_record: 'Deleted',
+          schedules: 'Deleted',
+          lesson_reports: 'Deleted',
+          student_lessons: 'Deleted',
+          schedule_templates: 'Deleted',
+          schedule_history: 'Updated (schedule_id set to NULL)'
+        }
+      })
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
   } catch (error) {
     console.error('Delete student error:', error)
     return errorResponse(500, 'Failed to delete student')

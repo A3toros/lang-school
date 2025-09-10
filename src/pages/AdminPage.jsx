@@ -40,7 +40,7 @@ const AdminPage = () => {
             
             <div className="flex items-center space-x-4">
               <span className="text-sm text-neutral-600">
-                Welcome, {user?.teacher_name || user?.username}
+                Welcome, {user?.teacher_name || user?.username}. Let's talk!
               </span>
               <button
                 onClick={logout}
@@ -89,8 +89,8 @@ const AdminPage = () => {
               selectedTeacher={selectedTeacher}
             />
             <ScheduleTable
-              selectedTeacher={selectedTeacher}
-              currentWeek={currentWeek}
+              teacherId={selectedTeacher?.id}
+              weekStart={currentWeek}
               onWeekChange={handleWeekChange}
             />
           </motion.div>

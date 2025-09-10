@@ -12,6 +12,14 @@ const TeacherDashboard = () => {
   const [showReportModal, setShowReportModal] = useState(false)
   const [teacherStats, setTeacherStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(true)
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return d.toISOString().split('T')[0]
+  })
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0])
+  const [bucket, setBucket] = useState('week')
+  const [analytics, setAnalytics] = useState({ loading: false, data: [], totals: { completed: 0, absent: 0, warned: 0, total: 0 } })
 
   const teacherId = user?.teacherId
 
@@ -57,6 +65,26 @@ const TeacherDashboard = () => {
     }
   }
 
+  const fetchMyAnalytics = async () => {
+    if (!fromDate || !toDate) return
+    setAnalytics(prev => ({ ...prev, loading: true }))
+    try {
+      const res = await apiService.getMyTeacherAttendanceAnalytics(fromDate, toDate, bucket)
+      const rows = res?.data || []
+      const totals = rows.reduce((acc, r) => {
+        acc.completed += Number(r.completed || 0)
+        acc.absent += Number(r.absent || 0)
+        acc.warned += Number(r.warned || 0)
+        acc.total += Number(r.total || 0)
+        return acc
+      }, { completed: 0, absent: 0, warned: 0, total: 0 })
+      setAnalytics({ loading: false, data: rows, totals })
+    } catch (e) {
+      console.error('Analytics fetch error', e)
+      setAnalytics(prev => ({ ...prev, loading: false }))
+    }
+  }
+
   if (!teacherId) {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -83,7 +111,7 @@ const TeacherDashboard = () => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-neutral-600">
-                Welcome, {user?.teacher_name || user?.username}
+                Welcome, {user?.teacher_name || user?.username}. Let's talk!
               </span>
             </div>
           </div>
@@ -138,6 +166,47 @@ const TeacherDashboard = () => {
                   {teacherStats?.attendance_percentage ? `${teacherStats.attendance_percentage}%` : 'N/A'}
                 </p>
               )}
+            </div>
+          </div>
+
+          {/* Date Range Analytics (Self) */}
+          <div className="bg-white border border-neutral-200 rounded-lg p-4 mb-8">
+            <div className="flex flex-col md:flex-row md:items-end md:space-x-4 space-y-3 md:space-y-0">
+              <div>
+                <label className="block text-sm text-neutral-600 mb-1">From</label>
+                <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-600 mb-1">To</label>
+                <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-600 mb-1">Bucket</label>
+                <select className="input" value={bucket} onChange={e => setBucket(e.target.value)}>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                </select>
+              </div>
+              <button onClick={fetchMyAnalytics} className="btn btn-primary md:ml-auto">Update</button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div className="card p-3 text-center">
+                <div className="text-xs text-neutral-600">Completed</div>
+                <div className="text-2xl font-semibold text-green-600">{analytics.totals.completed}</div>
+              </div>
+              <div className="card p-3 text-center">
+                <div className="text-xs text-neutral-600">Absent</div>
+                <div className="text-2xl font-semibold text-red-600">{analytics.totals.absent}</div>
+              </div>
+              <div className="card p-3 text-center">
+                <div className="text-xs text-neutral-600">Warned</div>
+                <div className="text-2xl font-semibold text-yellow-600">{analytics.totals.warned}</div>
+              </div>
+              <div className="card p-3 text-center">
+                <div className="text-xs text-neutral-600">Total</div>
+                <div className="text-2xl font-semibold text-neutral-800">{analytics.totals.total}</div>
+              </div>
             </div>
           </div>
 

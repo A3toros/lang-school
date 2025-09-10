@@ -169,32 +169,24 @@ const EditTeacherModal = ({
             Teacher Photo
           </label>
           
-          {formData.photo_url ? (
-            <div className="space-y-4">
-              <ImagePreview
-                src={formData.photo_url}
-                alt="Current teacher photo"
-                className="w-32 h-32"
-                showDelete={true}
-                onDelete={handleImageDelete}
-              />
-              <div>
-                <p className="text-sm text-neutral-600 mb-2">Upload new photo:</p>
-                <ImageUploader
-                  onUpload={handleImageUpload}
-                  onError={handleImageError}
-                  folder="lang-school/teachers"
-                  className="w-full"
-                />
-              </div>
+          <ImageUploader
+            onUpload={handleImageUpload}
+            onError={handleImageError}
+            folder="lang-school/teachers"
+            className="w-full"
+            uploadedImageUrl={formData.photo_url}
+            showUploadArea={true}
+          />
+          {formData.photo_url && (
+            <div className="mt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={handleImageDelete}
+                className="text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Remove photo
+              </button>
             </div>
-          ) : (
-            <ImageUploader
-              onUpload={handleImageUpload}
-              onError={handleImageError}
-              folder="lang-school/teachers"
-              className="w-full"
-            />
           )}
         </div>
 

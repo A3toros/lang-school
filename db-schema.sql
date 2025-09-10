@@ -645,3 +645,265 @@ BEGIN
     AND u.is_active = true;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- new changes for Recurring_Schedule_Plan.md
+
+BEGIN;
+
+-- Ensure updated_at helper function exists (idempotent)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 0) Attendance: extend enum-like check to include absent_warned
+ALTER TABLE student_schedules DROP CONSTRAINT IF EXISTS student_schedules_attendance_status_check;
+ALTER TABLE student_schedules
+  ADD CONSTRAINT student_schedules_attendance_status_check
+  CHECK (attendance_status IN ('scheduled','completed','absent','absent_warned'));
+
+-- 1) Add recurrence/history columns + updated_at (if missing)
+ALTER TABLE student_schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE student_schedules ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT false;
+ALTER TABLE student_schedules ADD COLUMN IF NOT EXISTS end_date DATE;
+ALTER TABLE student_schedules ADD COLUMN IF NOT EXISTS original_teacher_id INTEGER REFERENCES teachers(id);
+ALTER TABLE student_schedules ADD COLUMN IF NOT EXISTS recurrence_pattern VARCHAR(50) DEFAULT 'weekly';
+
+-- 2) Add updated_at trigger for student_schedules (idempotent)
+DROP TRIGGER IF EXISTS update_student_schedules_updated_at ON student_schedules;
+CREATE TRIGGER update_student_schedules_updated_at BEFORE UPDATE ON student_schedules
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 3) Ensure idempotency on student_lessons (avoid double counting)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'unique_student_lesson'
+  ) THEN
+    ALTER TABLE student_lessons
+      ADD CONSTRAINT unique_student_lesson UNIQUE (student_id, lesson_date, time_slot);
+  END IF;
+END $$;
+
+-- 4) Day-of-week mapping migration (optional but recommended)
+-- Current DB likely uses Sunday=0; target uses Monday=0.
+-- Remap existing data: 0..6 (Sun..Sat) -> 0..6 (Mon..Sun)
+-- Formula: new = (old + 6) % 7
+UPDATE student_schedules
+SET day_of_week = (day_of_week + 6) % 7;
+
+-- 5) Recreate weekly_schedule with Monday=0 and extra columns
+DROP VIEW IF EXISTS weekly_schedule;
+CREATE VIEW weekly_schedule AS
+SELECT 
+    ss.id,
+    s.name as student_name,
+    t.name as teacher_name,
+    ss.day_of_week,
+    ss.time_slot,
+    ss.week_start_date,
+    ss.is_recurring,
+    ss.end_date,
+    ss.original_teacher_id,
+    ss.attendance_status,
+    ss.attendance_date,
+    ss.created_at,
+    ss.updated_at,
+    CASE ss.day_of_week
+        WHEN 0 THEN 'Monday'
+        WHEN 1 THEN 'Tuesday'
+        WHEN 2 THEN 'Wednesday'
+        WHEN 3 THEN 'Thursday'
+        WHEN 4 THEN 'Friday'
+        WHEN 5 THEN 'Saturday'
+        WHEN 6 THEN 'Sunday'
+    END as day_name
+FROM student_schedules ss
+JOIN students s ON ss.student_id = s.id
+JOIN teachers t ON ss.teacher_id = t.id
+WHERE s.is_active = true;
+
+-- 6) Recreate lesson_statistics (adds warned_absences, adjusted percentage)
+DROP VIEW IF EXISTS lesson_statistics;
+CREATE VIEW lesson_statistics AS
+SELECT 
+    s.id as student_id,
+    s.name as student_name,
+    t.name as teacher_name,
+    COUNT(ss.id) as total_lessons_scheduled,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent_warned' THEN 1 END) as warned_absences,
+    COUNT(CASE WHEN ss.attendance_status = 'scheduled' THEN 1 END) as pending_lessons,
+    COUNT(sl.id) as total_lessons_taken_ever,
+    s.lessons_per_week,
+    s.added_date,
+    ROUND(
+      (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
+       NULLIF(
+         (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)
+          + COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END)), 0)) * 100, 2
+    ) as attendance_percentage
+FROM students s
+LEFT JOIN teachers t ON s.teacher_id = t.id
+LEFT JOIN student_schedules ss ON s.id = ss.student_id
+LEFT JOIN student_lessons sl ON s.id = sl.student_id
+WHERE s.is_active = true
+GROUP BY s.id, s.name, t.name, s.lessons_per_week, s.added_date;
+
+-- 7) Recreate teacher_monthly_stats (adds warned_absences, adjusted totals/percentage)
+DROP VIEW IF EXISTS teacher_monthly_stats;
+CREATE VIEW teacher_monthly_stats AS
+SELECT 
+    t.id as teacher_id,
+    t.name as teacher_name,
+    t.email as teacher_email,
+    DATE_TRUNC('month', ss.attendance_date) as month_year,
+    EXTRACT(YEAR FROM ss.attendance_date) as year,
+    EXTRACT(MONTH FROM ss.attendance_date) as month,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent_warned' THEN 1 END) as warned_absences,
+    (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)
+     + COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END)) as total_lessons,
+    ROUND(
+        (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
+         NULLIF(
+           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)
+            + COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END)), 0)) * 100, 2
+    ) as attendance_percentage,
+    COUNT(DISTINCT s.id) as unique_students_taught
+FROM teachers t
+LEFT JOIN student_schedules ss ON t.id = ss.teacher_id 
+    AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
+    AND ss.attendance_date IS NOT NULL
+LEFT JOIN students s ON ss.student_id = s.id AND s.is_active = true
+WHERE t.is_active = true
+GROUP BY t.id, t.name, t.email, DATE_TRUNC('month', ss.attendance_date), 
+         EXTRACT(YEAR FROM ss.attendance_date), EXTRACT(MONTH FROM ss.attendance_date)
+ORDER BY t.id, month_year DESC;
+
+COMMIT;
+
+-- REQUIRED: Add recurring templates and audit history tables
+BEGIN;
+
+-- Ensure updated_at helper function exists (idempotent)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- schedule_templates: recurring pattern per student/teacher/day/time
+CREATE TABLE IF NOT EXISTS schedule_templates (
+  id SERIAL PRIMARY KEY,
+  student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+  teacher_id INTEGER REFERENCES teachers(id) ON DELETE CASCADE,
+  day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  time_slot VARCHAR(20) NOT NULL,
+  lessons_per_week INTEGER DEFAULT 1,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_template UNIQUE (student_id, teacher_id, day_of_week, time_slot, start_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_student ON schedule_templates(student_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_teacher ON schedule_templates(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_active ON schedule_templates(is_active);
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_dates ON schedule_templates(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_student_active ON schedule_templates(student_id, is_active);
+
+DROP TRIGGER IF EXISTS update_schedule_templates_updated_at ON schedule_templates;
+CREATE TRIGGER update_schedule_templates_updated_at BEFORE UPDATE ON schedule_templates
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- schedule_history: audit log of changes to student_schedules
+CREATE TABLE IF NOT EXISTS schedule_history (
+  id SERIAL PRIMARY KEY,
+  schedule_id INTEGER REFERENCES student_schedules(id) ON DELETE SET NULL,
+  action VARCHAR(20) NOT NULL CHECK (action IN ('created','updated','reassigned','cancelled','deleted')),
+  old_teacher_id INTEGER REFERENCES teachers(id),
+  new_teacher_id INTEGER REFERENCES teachers(id),
+  changed_by INTEGER REFERENCES users(id),
+  change_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_history_schedule ON schedule_history(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_action ON schedule_history(action);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_date ON schedule_history(change_date);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_teacher ON schedule_history(old_teacher_id, new_teacher_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_schedule_action ON schedule_history(schedule_id, action);
+-- Removed partial index using CURRENT_DATE (not IMMUTABLE). Use the simple date index above.
+
+COMMIT;
+
+-- Multiple Lesson Scheduling Enhancements
+-- Migration: 2025-01-15_multiple_lesson_enhancements.sql
+
+BEGIN;
+
+-- 1. Fix lessons_per_week constraint to allow 0
+ALTER TABLE students DROP CONSTRAINT IF EXISTS students_lessons_per_week_check;
+ALTER TABLE students ADD CONSTRAINT students_lessons_per_week_check 
+CHECK (lessons_per_week >= 0);
+
+-- Update default to 0 for new students (they start with no lessons)
+ALTER TABLE students ALTER COLUMN lessons_per_week SET DEFAULT 0;
+
+-- 2. Add lesson type classification to student_schedules
+ALTER TABLE student_schedules 
+ADD COLUMN lesson_type VARCHAR(20) DEFAULT 'scheduled' 
+CHECK (lesson_type IN ('scheduled', 'completed', 'cancelled', 'template'));
+
+-- 3. Add template reference to student_schedules
+ALTER TABLE student_schedules 
+ADD COLUMN template_id INTEGER REFERENCES schedule_templates(id);
+
+-- 4. Create time_slots table for systematic time management
+CREATE TABLE time_slots (
+  id SERIAL PRIMARY KEY,
+  time_slot VARCHAR(20) NOT NULL UNIQUE, -- e.g., "6:30-7:00"
+  duration_minutes INTEGER DEFAULT 30,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Insert standard time slots (6:30-22:00)
+INSERT INTO time_slots (time_slot, duration_minutes) VALUES
+('6:30-7:00', 30), ('7:00-7:30', 30), ('7:30-8:00', 30), ('8:00-8:30', 30),
+('8:30-9:00', 30), ('9:00-9:30', 30), ('9:30-10:00', 30), ('10:00-10:30', 30),
+('10:30-11:00', 30), ('11:00-11:30', 30), ('11:30-12:00', 30), ('12:00-12:30', 30),
+('12:30-13:00', 30), ('13:00-13:30', 30), ('13:30-14:00', 30), ('14:00-14:30', 30),
+('14:30-15:00', 30), ('15:00-15:30', 30), ('15:30-16:00', 30), ('16:00-16:30', 30),
+('16:30-17:00', 30), ('17:00-17:30', 30), ('17:30-18:00', 30), ('18:00-18:30', 30),
+('18:30-19:00', 30), ('19:00-19:30', 30), ('19:30-20:00', 30), ('20:00-20:30', 30),
+('20:30-21:00', 30), ('21:00-21:30', 30), ('21:30-22:00', 30);
+
+-- 6. Add performance indexes
+CREATE INDEX idx_student_schedules_lesson_type ON student_schedules(lesson_type);
+CREATE INDEX idx_student_schedules_template ON student_schedules(template_id);
+CREATE INDEX idx_time_slots_active ON time_slots(is_active);
+CREATE INDEX idx_time_slots_slot ON time_slots(time_slot);
+
+-- 7. Update existing student_schedules to have proper lesson_type
+UPDATE student_schedules 
+SET lesson_type = CASE 
+  WHEN attendance_status = 'completed' THEN 'completed'
+  WHEN attendance_status = 'absent' THEN 'scheduled'
+  ELSE 'scheduled'
+END;
+
+COMMIT;
+
+
+

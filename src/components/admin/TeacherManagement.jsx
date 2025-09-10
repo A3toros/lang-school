@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
+import ImageUploader from '../common/ImageUploader'
+import SuccessNotification from '../common/SuccessNotification'
 
 const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [teachers, setTeachers] = useState([])
+  const [inactiveTeachers, setInactiveTeachers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('active') // 'active' or 'inactive'
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [showPasswordViewModal, setShowPasswordViewModal] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState(null)
   const [newTeacher, setNewTeacher] = useState({
     name: '',
@@ -17,15 +22,25 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     description: '',
     photo_url: ''
   })
+  const [showStatusConfirm, setShowStatusConfirm] = useState(false)
+  const [statusChangeData, setStatusChangeData] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteData, setDeleteData] = useState(null)
+  const [showNotification, setShowNotification] = useState(false)
+  const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
 
   useEffect(() => {
-    fetchTeachers()
-  }, [])
+    if (activeTab === 'active') {
+      fetchTeachers()
+    } else {
+      fetchInactiveTeachers()
+    }
+  }, [activeTab])
 
   const fetchTeachers = async () => {
     try {
       setLoading(true)
-      const response = await apiService.getTeachers()
+      const response = await apiService.getTeachers({ status: 'active' })
       if (response.success) {
         setTeachers(response.teachers)
       }
@@ -36,10 +51,29 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     }
   }
 
+  const fetchInactiveTeachers = async () => {
+    try {
+      setLoading(true)
+      const response = await apiService.getTeachers({ status: 'inactive' })
+      if (response.success) {
+        setInactiveTeachers(response.teachers)
+      }
+    } catch (error) {
+      console.error('Error fetching inactive teachers:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const showSuccessNotification = (title, message, type = 'success') => {
+    setNotificationData({ title, message, type })
+    setShowNotification(true)
+  }
+
   const handleAddTeacher = async () => {
     try {
       if (!newTeacher.name || !newTeacher.email || !newTeacher.username || !newTeacher.password) {
-        alert('Please fill in all required fields')
+        showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
         return
       }
 
@@ -63,18 +97,18 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         })
         setShowAddModal(false)
         fetchTeachers()
-        alert('Teacher added successfully')
+        showSuccessNotification('Success!', 'Teacher added successfully', 'success')
       }
     } catch (error) {
       console.error('Error adding teacher:', error)
-      alert('Failed to add teacher')
+      showSuccessNotification('Error', 'Failed to add teacher', 'error')
     }
   }
 
   const handleEditTeacher = async () => {
     try {
       if (!editingTeacher.name || !editingTeacher.email) {
-        alert('Please fill in all required fields')
+        showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
         return
       }
 
@@ -89,39 +123,71 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         setEditingTeacher(null)
         setShowEditModal(false)
         fetchTeachers()
-        alert('Teacher updated successfully')
+        showSuccessNotification('Success!', 'Teacher updated successfully', 'success')
       }
     } catch (error) {
       console.error('Error updating teacher:', error)
-      alert('Failed to update teacher')
+      showSuccessNotification('Error', 'Failed to update teacher', 'error')
     }
   }
 
-  const handleDeleteTeacher = async (teacherId) => {
-    if (window.confirm('Are you sure you want to delete this teacher? This will also deactivate all associated students and schedules.')) {
-      try {
-        const response = await apiService.deleteTeacher(teacherId)
-        if (response.success) {
-          fetchTeachers()
-          alert('Teacher deleted successfully')
-        }
-      } catch (error) {
-        console.error('Error deleting teacher:', error)
-        alert('Failed to delete teacher')
-      }
-    }
+  const handleStatusChange = (teacher, newStatus) => {
+    setStatusChangeData({ teacher, newStatus })
+    setShowStatusConfirm(true)
   }
 
-  const handleReactivateTeacher = async (teacherId) => {
+  const confirmStatusChange = async () => {
     try {
-      const response = await apiService.reactivateTeacher(teacherId)
-      if (response.success) {
-        fetchTeachers()
-        alert('Teacher reactivated successfully')
+      const { teacher, newStatus } = statusChangeData
+      
+      if (newStatus === false) {
+        // Deactivating teacher
+        const response = await apiService.deactivateTeacher(teacher.id)
+        if (response.success) {
+          // Remove from active list and add to inactive list
+          setTeachers(prev => prev.filter(t => t.id !== teacher.id))
+          setInactiveTeachers(prev => [...prev, { ...teacher, is_active: false }])
+          showSuccessNotification('Success!', 'Teacher deactivated successfully - future schedules removed', 'success')
+        }
+      } else if (newStatus === true) {
+        // Reactivating teacher
+        const response = await apiService.reactivateTeacher(teacher.id)
+        if (response.success) {
+          // Remove from inactive list and add to active list
+          setInactiveTeachers(prev => prev.filter(t => t.id !== teacher.id))
+          setTeachers(prev => [...prev, { ...teacher, is_active: true }])
+          showSuccessNotification('Success!', 'Teacher reactivated successfully', 'success')
+        }
       }
+      
+      setShowStatusConfirm(false)
+      setStatusChangeData(null)
     } catch (error) {
-      console.error('Error reactivating teacher:', error)
-      alert('Failed to reactivate teacher')
+      console.error('Error updating teacher status:', error)
+      showSuccessNotification('Error', 'Error updating teacher status', 'error')
+    }
+  }
+
+  const handleHardDelete = (teacher) => {
+    setDeleteData(teacher)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmHardDelete = async () => {
+    try {
+      const response = await apiService.deleteTeacher(deleteData.id)
+      if (response.success) {
+        // Remove from both active and inactive lists
+        setTeachers(prev => prev.filter(t => t.id !== deleteData.id))
+        setInactiveTeachers(prev => prev.filter(t => t.id !== deleteData.id))
+        showSuccessNotification('Success!', 'Teacher deleted successfully - all data removed', 'success')
+      }
+      
+      setShowDeleteConfirm(false)
+      setDeleteData(null)
+    } catch (error) {
+      console.error('Error deleting teacher:', error)
+      showSuccessNotification('Error', 'Error deleting teacher', 'error')
     }
   }
 
@@ -129,12 +195,12 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     try {
       const response = await apiService.changeTeacherPassword(teacherId, newPassword)
       if (response.success) {
-        alert('Password changed successfully')
+        showSuccessNotification('Success!', 'Password changed successfully', 'success')
         setShowPasswordModal(false)
       }
     } catch (error) {
       console.error('Error changing password:', error)
-      alert('Failed to change password')
+      showSuccessNotification('Error', 'Failed to change password', 'error')
     }
   }
 
@@ -146,6 +212,11 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const openPasswordModal = (teacher) => {
     setEditingTeacher(teacher)
     setShowPasswordModal(true)
+  }
+
+  const openPasswordViewModal = (teacher) => {
+    setEditingTeacher(teacher)
+    setShowPasswordViewModal(true)
   }
 
   return (
@@ -160,18 +231,42 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex space-x-1 mb-6">
+        <button
+          onClick={() => setActiveTab('active')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            activeTab === 'active'
+              ? 'bg-primary-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Active Teachers ({teachers.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('inactive')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            activeTab === 'inactive'
+              ? 'bg-primary-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Inactive Teachers ({inactiveTeachers.length})
+        </button>
+      </div>
+
       {/* Teachers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-full flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
           </div>
-        ) : teachers.length === 0 ? (
+        ) : (activeTab === 'active' ? teachers : inactiveTeachers).length === 0 ? (
           <div className="col-span-full text-center text-gray-500 py-8">
-            No teachers found
+            No {activeTab} teachers found
           </div>
         ) : (
-          teachers.map((teacher) => (
+          (activeTab === 'active' ? teachers : inactiveTeachers).map((teacher) => (
             <motion.div
               key={teacher.id}
               className={`border rounded-lg p-4 cursor-pointer transition-all duration-200 ${
@@ -214,13 +309,28 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
               )}
 
               <div className="flex items-center justify-between">
-                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                  teacher.is_active 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {teacher.is_active ? 'Active' : 'Inactive'}
-                </span>
+                <div className="flex items-center space-x-2">
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    teacher.is_active 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {teacher.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleStatusChange(teacher, !teacher.is_active)
+                    }}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${
+                      teacher.is_active
+                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    }`}
+                  >
+                    {teacher.is_active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                </div>
                 
                 <div className="flex space-x-1">
                   <button
@@ -235,31 +345,21 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      openPasswordModal(teacher)
+                      openPasswordViewModal(teacher)
                     }}
                     className="text-yellow-600 hover:text-yellow-800 text-xs px-2 py-1 rounded hover:bg-yellow-50"
                   >
                     Password
                   </button>
-                  {teacher.is_active ? (
+                  {teacher.is_active && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleDeleteTeacher(teacher.id)
+                        handleHardDelete(teacher)
                       }}
                       className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50"
                     >
                       Delete
-                    </button>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleReactivateTeacher(teacher.id)
-                      }}
-                      className="text-green-600 hover:text-green-800 text-xs px-2 py-1 rounded hover:bg-green-50"
-                    >
-                      Reactivate
                     </button>
                   )}
                 </div>
@@ -314,13 +414,19 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
-              <input
-                type="url"
-                placeholder="Photo URL"
-                value={newTeacher.photo_url}
-                onChange={(e) => setNewTeacher(prev => ({ ...prev, photo_url: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Teacher Photo
+                </label>
+                <ImageUploader
+                  onUpload={(url) => setNewTeacher(prev => ({ ...prev, photo_url: url }))}
+                  onError={(error) => console.error('Upload error:', error)}
+                  folder="lang-school/teachers"
+                  className="w-full"
+                  uploadedImageUrl={newTeacher.photo_url}
+                  showUploadArea={!newTeacher.photo_url}
+                />
+              </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
@@ -371,13 +477,22 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
-              <input
-                type="url"
-                placeholder="Photo URL"
-                value={editingTeacher.photo_url || ''}
-                onChange={(e) => setEditingTeacher(prev => ({ ...prev, photo_url: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Teacher Photo
+                </label>
+                <ImageUploader
+                  onUpload={(url) => setEditingTeacher(prev => ({ ...prev, photo_url: url }))}
+                  onError={(error) => console.error('Upload error:', error)}
+                  folder="lang-school/teachers"
+                  className="w-full"
+                  uploadedImageUrl={editingTeacher.photo_url}
+                  showUploadArea={true}
+                />
+                {editingTeacher.photo_url && (
+                  <p className="text-sm text-neutral-600 mt-2">Click above to upload a new photo</p>
+                )}
+              </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
@@ -397,6 +512,18 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         </div>
       )}
 
+      {/* Password View Modal */}
+      {showPasswordViewModal && editingTeacher && (
+        <PasswordViewModal
+          teacher={editingTeacher}
+          onClose={() => setShowPasswordViewModal(false)}
+          onEditPassword={() => {
+            setShowPasswordViewModal(false)
+            setShowPasswordModal(true)
+          }}
+        />
+      )}
+
       {/* Password Change Modal */}
       {showPasswordModal && editingTeacher && (
         <PasswordChangeModal
@@ -405,7 +532,145 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
           onChangePassword={handleChangePassword}
         />
       )}
-    </div>
+
+      {/* Status Change Confirmation Modal */}
+      {showStatusConfirm && statusChangeData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+          >
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Confirm Status Change
+                </h3>
+                <button
+                  onClick={() => setShowStatusConfirm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  Are you sure you want to {statusChangeData.newStatus ? 'reactivate' : 'deactivate'} teacher{' '}
+                  <span className="font-semibold">{statusChangeData.teacher.name}</span>?
+                </p>
+                
+              {!statusChangeData.newStatus && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-red-800 text-sm">
+                    <strong>Warning:</strong> Deactivating will unassign all students from this teacher and make them unavailable for new student assignments. Students will become unassigned but remain active.
+                  </p>
+                </div>
+              )}
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowStatusConfirm(false)}
+                  className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmStatusChange}
+                  className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                    statusChangeData.newStatus
+                      ? 'bg-green-500 hover:bg-green-600 text-white'
+                      : 'bg-red-500 hover:bg-red-600 text-white'
+                  }`}
+                >
+                  {statusChangeData.newStatus ? 'Reactivate' : 'Deactivate'}
+                </button>
+              </div>
+            </div>
+        </motion.div>
+      </div>
+    )}
+
+    {/* Hard Delete Confirmation Modal */}
+    {showDeleteConfirm && deleteData && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+        >
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-red-600">
+                ⚠️ Permanent Deletion
+              </h3>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to <strong>permanently delete</strong> teacher{' '}
+                <span className="font-semibold text-red-600">{deleteData.name}</span>?
+              </p>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-red-800 text-sm font-semibold mb-2">
+                  This action will permanently delete:
+                </p>
+                <ul className="text-red-700 text-sm space-y-1">
+                  <li>• Teacher record and user account</li>
+                  <li>• All lesson reports and attendance data</li>
+                  <li>• All schedules (past and future)</li>
+                  <li>• Schedule templates and history</li>
+                  <li>• Teacher photo from Cloudinary</li>
+                </ul>
+                <p className="text-red-800 text-sm font-semibold mt-2">
+                  This action cannot be undone!
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmHardDelete}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )}
+
+    {/* Success Notification */}
+    <SuccessNotification
+      isVisible={showNotification}
+      onClose={() => setShowNotification(false)}
+      title={notificationData.title}
+      message={notificationData.message}
+      type={notificationData.type}
+      duration={4000}
+    />
+  </div>
   )
 }
 
@@ -418,11 +683,11 @@ const PasswordChangeModal = ({ teacher, onClose, onChangePassword }) => {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (newPassword !== confirmPassword) {
-      alert('Passwords do not match')
+      // Note: This will be handled by the parent component's notification system
       return
     }
     if (newPassword.length < 6) {
-      alert('Password must be at least 6 characters long')
+      // Note: This will be handled by the parent component's notification system
       return
     }
     onChangePassword(teacher.id, newPassword)
@@ -486,6 +751,142 @@ const PasswordChangeModal = ({ teacher, onClose, onChangePassword }) => {
             </button>
           </div>
         </form>
+      </motion.div>
+    </div>
+  )
+}
+
+// Password View Modal Component
+const PasswordViewModal = ({ teacher, onClose, onEditPassword }) => {
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    if (teacher) {
+      // Reset state when teacher changes
+      setPassword('')
+      setError('')
+      setShowPassword(false)
+      setLoading(false)
+      fetchPassword()
+    } else {
+      // Reset state when modal is closed
+      setPassword('')
+      setError('')
+      setShowPassword(false)
+      setLoading(false)
+    }
+  }, [teacher])
+
+  const fetchPassword = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      
+      const response = await apiService.getTeacherPassword(teacher.id)
+      
+      if (response.success) {
+        setPassword(response.password)
+      } else {
+        setError(response.error || 'Failed to fetch password')
+      }
+    } catch (error) {
+      console.error('Error fetching password:', error)
+      setError('Failed to fetch password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(password)
+      // Note: This will be handled by the parent component's notification system
+    } catch (error) {
+      console.error('Failed to copy password:', error)
+      // Note: This will be handled by the parent component's notification system
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-lg p-6 w-96 max-w-full mx-4"
+      >
+        <h3 className="text-lg font-semibold mb-4">
+          Current Password - {teacher.name}
+        </h3>
+
+        {loading && (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
+            <p className="mt-2 text-gray-600">Loading password...</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && password && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Current Password
+              </label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  readOnly
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="px-3 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  type="button"
+                  onClick={copyToClipboard}
+                  className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-yellow-800 text-sm">
+                <strong>Note:</strong> This is the teacher's current password. 
+                Click "Change Password" below to set a new one.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end space-x-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Close
+          </button>
+          <button
+            onClick={onEditPassword}
+            className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg"
+          >
+            Change Password
+          </button>
+        </div>
       </motion.div>
     </div>
   )

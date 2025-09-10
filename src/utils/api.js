@@ -259,8 +259,15 @@ class ApiService {
   }
 
   // Teachers API
-  async getTeachers() {
-    return this.makeRequest('/teachers')
+  async getTeachers(filters = {}) {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params.append(key, value)
+      }
+    })
+    const queryString = params.toString()
+    return this.makeRequest(`/teachers${queryString ? `?${queryString}` : ''}`)
   }
 
   async getTeacher(teacherId) {
@@ -278,6 +285,12 @@ class ApiService {
     return this.makeRequest(`/teachers/${teacherId}`, {
       method: 'PUT',
       body: JSON.stringify(teacherData)
+    })
+  }
+
+  async deactivateTeacher(teacherId) {
+    return this.makeRequest(`/teachers/${teacherId}/deactivate`, {
+      method: 'POST'
     })
   }
 
@@ -427,13 +440,9 @@ class ApiService {
     })
   }
 
-  async searchTeachers(query, page, limit) {
-    const params = new URLSearchParams()
-    if (query) params.append('q', query)
-    if (page) params.append('page', page)
-    if (limit) params.append('limit', limit)
-    const queryString = params.toString()
-    return this.makeRequest(`/teachers/search${queryString ? `?${queryString}` : ''}`)
+  async searchTeachers(query, page = 1, limit = 50) {
+    const params = new URLSearchParams({ q: query, page, limit })
+    return this.makeRequest(`/teachers/search?${params}`)
   }
 
   async getInactiveTeachers() {
@@ -447,50 +456,7 @@ class ApiService {
     })
   }
 
-  async searchTeachers(query, page = 1, limit = 50) {
-    const params = new URLSearchParams({ q: query, page, limit })
-    return this.makeRequest(`/teachers/search?${params}`)
-  }
-
-  async getInactiveTeachers() {
-    return this.makeRequest('/teachers/inactive')
-  }
-
   // Students API
-  async getStudents(filters = {}) {
-    const params = new URLSearchParams()
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value)
-      }
-    })
-    const queryString = params.toString()
-    return this.makeRequest(`/students${queryString ? `?${queryString}` : ''}`)
-  }
-
-  async getStudent(studentId) {
-    return this.makeRequest(`/students/${studentId}`)
-  }
-
-  async createStudent(studentData) {
-    return this.makeRequest('/students', {
-      method: 'POST',
-      body: JSON.stringify(studentData)
-    })
-  }
-
-  async updateStudent(studentId, studentData) {
-    return this.makeRequest(`/students/${studentId}`, {
-      method: 'PUT',
-      body: JSON.stringify(studentData)
-    })
-  }
-
-  async deleteStudent(studentId) {
-    return this.makeRequest(`/students/${studentId}`, {
-      method: 'DELETE'
-    })
-  }
 
   async reactivateStudent(studentId) {
     return this.makeRequest(`/students/${studentId}/reactivate`, {
@@ -594,6 +560,14 @@ class ApiService {
     })
   }
 
+  // Mark attendance for a specific schedule (completed | absent | absent_warned)
+  async markScheduleAttendance(scheduleId, status, attendanceDate) {
+    return this.makeRequest(`/schedules/${scheduleId}/attendance`, {
+      method: 'POST',
+      body: JSON.stringify({ status, date: attendanceDate })
+    })
+  }
+
   async getScheduleConflicts(weekStart) {
     const params = weekStart ? `?week_start=${weekStart}` : ''
     return this.makeRequest(`/schedules/conflicts${params}`)
@@ -635,79 +609,11 @@ class ApiService {
     return this.makeRequest(`/schedules/available-slots?${params}`)
   }
 
-  async reassignStudent(studentId, newTeacherId, scheduleIds) {
+  async reassignStudentSchedules(studentId, newTeacherId, scheduleIds) {
     return this.makeRequest('/schedules/reassign-student', {
       method: 'POST',
       body: JSON.stringify({ student_id: studentId, new_teacher_id: newTeacherId, schedule_ids: scheduleIds })
     })
-  }
-
-  async createSchedule(scheduleData) {
-    return this.makeRequest('/schedules', {
-      method: 'POST',
-      body: JSON.stringify(scheduleData)
-    })
-  }
-
-  async updateSchedule(scheduleId, scheduleData) {
-    return this.makeRequest(`/schedules/${scheduleId}`, {
-      method: 'PUT',
-      body: JSON.stringify(scheduleData)
-    })
-  }
-
-  async deleteSchedule(scheduleId) {
-    return this.makeRequest(`/schedules/${scheduleId}`, {
-      method: 'DELETE'
-    })
-  }
-
-  async bulkUpdateSchedules(schedules) {
-    return this.makeRequest('/schedules/bulk', {
-      method: 'POST',
-      body: JSON.stringify({ schedules })
-    })
-  }
-
-  async getScheduleConflicts(weekStart) {
-    const params = weekStart ? `?week_start=${weekStart}` : ''
-    return this.makeRequest(`/schedules/conflicts${params}`)
-  }
-
-  async getTeacherSchedules(teacherId, weekStart) {
-    const params = weekStart ? `?week_start=${weekStart}` : ''
-    return this.makeRequest(`/schedules/teacher/${teacherId}${params}`)
-  }
-
-  async getStudentSchedules(studentId, weekStart) {
-    const params = weekStart ? `?week_start=${weekStart}` : ''
-    return this.makeRequest(`/schedules/student/${studentId}${params}`)
-  }
-
-  async getMonthlySchedules(year, month) {
-    return this.makeRequest(`/schedules/month/${year}/${month}`)
-  }
-
-  async saveWeekSchedule(weekStartDate, schedules) {
-    return this.makeRequest('/schedules/save-week', {
-      method: 'POST',
-      body: JSON.stringify({ week_start_date: weekStartDate, schedules })
-    })
-  }
-
-  async discardChanges() {
-    return this.makeRequest('/schedules/discard-changes', {
-      method: 'POST'
-    })
-  }
-
-  async getAvailableSlots(teacherId, dayOfWeek, weekStartDate) {
-    const params = new URLSearchParams({
-      teacher_id: teacherId,
-      day_of_week: dayOfWeek,
-      week_start_date: weekStartDate
-    })
-    return this.makeRequest(`/schedules/available-slots?${params}`)
   }
 
   async reassignStudentInSchedule(studentId, newTeacherId, scheduleIds) {
@@ -786,56 +692,31 @@ class ApiService {
     return this.makeRequest(`/attendance/export${params}`)
   }
 
-  async updateAttendance(attendanceId, status, attendanceDate) {
-    return this.makeRequest(`/attendance/${attendanceId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        status,
-        attendance_date: attendanceDate
-      })
-    })
-  }
-
-  async getTeacherAttendance(teacherId, period) {
-    const params = period ? `?period=${period}` : ''
-    return this.makeRequest(`/attendance/teacher/${teacherId}${params}`)
-  }
-
-  async getStudentAttendance(studentId, period) {
-    const params = period ? `?period=${period}` : ''
-    return this.makeRequest(`/attendance/student/${studentId}${params}`)
-  }
-
-  async getAttendanceStats(filters = {}) {
+  // Analytics (date-range, bucket=week|month)
+  async getStudentAttendanceAnalytics(studentId, from, to, bucket = 'week') {
     const params = new URLSearchParams()
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value)
-      }
-    })
-    const queryString = params.toString()
-    return this.makeRequest(`/attendance/stats${queryString ? `?${queryString}` : ''}`)
+    if (from) params.append('from', from)
+    if (to) params.append('to', to)
+    params.append('bucket', bucket)
+    return this.makeRequest(`/analytics/students/${studentId}/attendance?${params.toString()}`)
   }
 
-  async getWeeklyAttendance(date) {
-    return this.makeRequest(`/attendance/week/${date}`)
+  async getTeacherAttendanceAnalytics(teacherId, from, to, bucket = 'week') {
+    const params = new URLSearchParams()
+    if (from) params.append('from', from)
+    if (to) params.append('to', to)
+    params.append('bucket', bucket)
+    return this.makeRequest(`/analytics/teachers/${teacherId}/attendance?${params.toString()}`)
   }
 
-  async getMonthlyAttendance(year, month) {
-    return this.makeRequest(`/attendance/month/${year}/${month}`)
+  async getMyTeacherAttendanceAnalytics(from, to, bucket = 'week') {
+    const params = new URLSearchParams()
+    if (from) params.append('from', from)
+    if (to) params.append('to', to)
+    params.append('bucket', bucket)
+    return this.makeRequest(`/analytics/teachers/me/attendance?${params.toString()}`)
   }
 
-  async bulkMarkAttendance(attendanceUpdates) {
-    return this.makeRequest('/attendance/bulk-mark', {
-      method: 'POST',
-      body: JSON.stringify({ attendance_updates: attendanceUpdates })
-    })
-  }
-
-  async exportAttendance(period) {
-    const params = period ? `?period=${period}` : ''
-    return this.makeRequest(`/attendance/export${params}`)
-  }
 
   // Lesson Reports API
   async getReports(filters = {}) {
@@ -926,69 +807,10 @@ class ApiService {
   }
 
   // Content Management API
-  async getMissionContent() {
-    return this.makeRequest('/content/mission')
-  }
-
-  async updateMissionContent(missionData) {
-    return this.makeRequest('/content/mission', {
-      method: 'PUT',
-      body: JSON.stringify(missionData)
-    })
-  }
-
-  async getCourses(activeOnly = false) {
-    const params = activeOnly ? '?active_only=true' : ''
-    return this.makeRequest(`/content/courses${params}`)
-  }
-
-  async getCourse(courseId) {
-    return this.makeRequest(`/content/courses/${courseId}`)
-  }
-
-  async createCourse(courseData) {
-    return this.makeRequest('/content/courses', {
-      method: 'POST',
-      body: JSON.stringify(courseData)
-    })
-  }
-
-  async updateCourse(courseId, courseData) {
-    return this.makeRequest(`/content/courses/${courseId}`, {
-      method: 'PUT',
-      body: JSON.stringify(courseData)
-    })
-  }
-
-  async deleteCourse(courseId) {
-    return this.makeRequest(`/content/courses/${courseId}`, {
-      method: 'DELETE'
-    })
-  }
-
-  async getShowcaseSettings() {
-    return this.makeRequest('/content/showcase')
-  }
-
-  async updateShowcaseSettings(settings) {
-    return this.makeRequest('/content/showcase', {
-      method: 'PUT',
-      body: JSON.stringify(settings)
-    })
-  }
-
   async setFeaturedTeachers(teacherIds) {
     return this.makeRequest('/content/featured-teachers', {
       method: 'POST',
       body: JSON.stringify({ teacher_ids: teacherIds })
-    })
-  }
-
-
-  async toggleCourse(courseId, isActive) {
-    return this.makeRequest(`/content/courses/${courseId}/toggle`, {
-      method: 'PUT',
-      body: JSON.stringify({ is_active: isActive })
     })
   }
 
@@ -1142,6 +964,27 @@ class ApiService {
     }
   }
 
+  async getInactiveStudents() {
+    apiDebugger.info('STUDENTS', 'Fetching inactive students')
+    
+    try {
+      const result = await this.makeRequest('/students/inactive')
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Inactive students fetched', {
+          count: result.students?.length || 0
+        })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to fetch inactive students', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error fetching inactive students', { error: error.message })
+      throw error
+    }
+  }
+
   async getStudent(studentId) {
     apiDebugger.info('STUDENTS', 'Fetching student', { studentId })
     
@@ -1201,6 +1044,27 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('STUDENTS', 'Error updating student', { studentId, error: error.message })
+      throw error
+    }
+  }
+
+  async deactivateStudent(studentId) {
+    apiDebugger.info('STUDENTS', 'Deactivating student', { studentId })
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}/deactivate`, {
+        method: 'POST'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Student deactivated successfully', { studentId })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to deactivate student', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error deactivating student', { studentId, error: error.message })
       throw error
     }
   }

@@ -202,6 +202,102 @@ export const getRelativeTime = (date) => {
   return `${Math.floor(diffInSeconds / 31536000)} years ago`
 }
 
+// Complex week numbering and month boundary logic
+export const getMonthWeekNumber = (date, targetMonth, targetYear) => {
+  const d = new Date(date)
+  const month = d.getMonth() + 1
+  const year = d.getFullYear()
+  
+  // If the date is not in the target month/year, return null
+  if (month !== targetMonth || year !== targetYear) {
+    return null
+  }
+  
+  // Get first day of target month
+  const firstDayOfMonth = new Date(targetYear, targetMonth - 1, 1)
+  const firstDayOfWeek = firstDayOfMonth.getDay() // 0 = Sunday, 1 = Monday, etc.
+  
+  // Calculate which week of the month this date falls into
+  const dayOfMonth = d.getDate()
+  const weekNumber = Math.ceil((dayOfMonth + firstDayOfWeek) / 7)
+  
+  return weekNumber
+}
+
+export const getWeekInfoForMonth = (weekStart, targetMonth, targetYear) => {
+  const weekDates = getWeekDates(weekStart)
+  const firstDayOfMonth = new Date(targetYear, targetMonth - 1, 1)
+  const lastDayOfMonth = new Date(targetYear, targetMonth, 0)
+  
+  // Check if this week contains any days from the target month
+  const hasTargetMonthDays = weekDates.some(date => 
+    date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
+  )
+  
+  if (!hasTargetMonthDays) {
+    return {
+      weekNumber: null,
+      isCurrentMonth: false,
+      days: weekDates.map(date => ({
+        date,
+        isCurrentMonth: false,
+        isEditable: false
+      }))
+    }
+  }
+  
+  // Find the first day of the week that belongs to target month
+  const firstTargetMonthDay = weekDates.find(date => 
+    date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
+  )
+  
+  // Calculate week number based on target month
+  const weekNumber = getMonthWeekNumber(firstTargetMonthDay, targetMonth, targetYear)
+  
+  // Process each day in the week
+  const days = weekDates.map(date => {
+    const isCurrentMonth = date.getMonth() + 1 === targetMonth && date.getFullYear() === targetYear
+    return {
+      date,
+      isCurrentMonth,
+      isEditable: isCurrentMonth
+    }
+  })
+  
+  return {
+    weekNumber,
+    isCurrentMonth: true,
+    days
+  }
+}
+
+export const getCurrentWeekInfo = (targetMonth, targetYear) => {
+  const today = new Date()
+  const currentWeekStart = getCurrentWeekStart()
+  return getWeekInfoForMonth(currentWeekStart, targetMonth, targetYear)
+}
+
+export const getWeekNavigationInfo = (weekStart, targetMonth, targetYear) => {
+  const weekInfo = getWeekInfoForMonth(weekStart, targetMonth, targetYear)
+  
+  if (!weekInfo.isCurrentMonth) {
+    return {
+      weekNumber: null,
+      weekLabel: 'Other Month',
+      isCurrentWeek: false
+    }
+  }
+  
+  const currentWeekInfo = getCurrentWeekInfo(targetMonth, targetYear)
+  const isCurrentWeek = weekStart === getCurrentWeekStart()
+  
+  return {
+    weekNumber: weekInfo.weekNumber,
+    weekLabel: `Week ${weekInfo.weekNumber}`,
+    isCurrentWeek
+  }
+}
+
 export default {
   formatDate,
   formatTime,
@@ -228,5 +324,9 @@ export default {
   getLastDayOfMonth,
   isWeekend,
   getWeekNumber,
-  getRelativeTime
+  getRelativeTime,
+  getMonthWeekNumber,
+  getWeekInfoForMonth,
+  getCurrentWeekInfo,
+  getWeekNavigationInfo
 }

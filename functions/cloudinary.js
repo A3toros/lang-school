@@ -1,10 +1,12 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
-import cloudinary from 'cloudinary'
+require('dotenv').config();
+
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
+const cloudinary = require('cloudinary')
 
 // Configure Cloudinary
 cloudinary.config(process.env.CLOUDINARY_URL)
 
-export const handler = async (event, context) => {
+exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -43,6 +45,8 @@ export const handler = async (event, context) => {
       return await bulkUploadImages(event, user)
     } else if (path === '/api/cloudinary/images' && method === 'GET') {
       return await listImages(event, user)
+    } else if (path === '/api/cloudinary/cleanup-orphaned' && method === 'POST') {
+      return await cleanupOrphanedImages(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -90,7 +94,7 @@ async function uploadImage(event, user) {
   }
 }
 
-// Delete image from Cloudinary
+// Delete image from Cloudinary (API endpoint)
 async function deleteImage(event, user) {
   try {
     const { public_id } = JSON.parse(event.body)
@@ -109,6 +113,29 @@ async function deleteImage(event, user) {
   } catch (error) {
     console.error('Delete image error:', error)
     return errorResponse(500, 'Failed to delete image')
+  }
+}
+
+// Delete image from Cloudinary (programmatic function)
+async function deleteImageByPublicId(publicId) {
+  try {
+    if (!publicId) {
+      console.log('No public ID provided, skipping Cloudinary deletion')
+      return { success: true, message: 'No image to delete' }
+    }
+
+    const result = await cloudinary.uploader.destroy(publicId)
+    
+    if (result.result === 'ok') {
+      console.log('✅ Image deleted from Cloudinary:', publicId)
+      return { success: true, message: 'Image deleted successfully' }
+    } else {
+      console.log('⚠️ Image not found in Cloudinary:', publicId)
+      return { success: true, message: 'Image not found (already deleted)' }
+    }
+  } catch (error) {
+    console.error('❌ Error deleting image from Cloudinary:', error)
+    return { success: false, error: error.message }
   }
 }
 
@@ -348,4 +375,67 @@ async function listImages(event, user) {
     console.error('List images error:', error)
     return errorResponse(500, 'Failed to list images')
   }
+}
+
+// Cleanup orphaned images
+async function cleanupOrphanedImages(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    // Get all photo_public_ids from active teachers
+    const activeTeachers = await query(
+      'SELECT photo_public_id FROM teachers WHERE is_active = true AND photo_public_id IS NOT NULL'
+    )
+    
+    const activePublicIds = activeTeachers.rows.map(row => row.photo_public_id)
+    
+    // Get all photo_public_ids from Cloudinary
+    const result = await cloudinary.api.resources({
+      type: 'upload',
+      prefix: 'lang-school/teachers/',
+      max_results: 500
+    })
+    
+    const cloudinaryPublicIds = result.resources.map(resource => resource.public_id)
+    
+    // Find orphaned images
+    const orphanedIds = cloudinaryPublicIds.filter(id => !activePublicIds.includes(id))
+    
+    console.log(`Found ${orphanedIds.length} orphaned images`)
+    
+    // Delete orphaned images
+    let deletedCount = 0
+    let errorCount = 0
+    
+    for (const publicId of orphanedIds) {
+      try {
+        const deleteResult = await deleteImageByPublicId(publicId)
+        if (deleteResult.success) {
+          deletedCount++
+        } else {
+          errorCount++
+        }
+      } catch (error) {
+        console.error(`Error deleting ${publicId}:`, error)
+        errorCount++
+      }
+    }
+    
+    return successResponse({ 
+      message: `Cleanup completed. Deleted ${deletedCount} orphaned images.`,
+      deleted: deletedCount,
+      errors: errorCount,
+      total_found: orphanedIds.length
+    })
+  } catch (error) {
+    console.error('Cleanup orphaned images error:', error)
+    return errorResponse(500, 'Cleanup failed')
+  }
+}
+
+// Export functions for use in other modules
+module.exports = {
+  deleteImageByPublicId
 }

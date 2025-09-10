@@ -1,4 +1,6 @@
-import jwt from 'jsonwebtoken'
+require('dotenv').config();
+
+const jwt = require('jsonwebtoken')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
@@ -170,7 +172,7 @@ const validateToken = (token) => {
   }
 }
 
-export {
+module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyAccessToken,

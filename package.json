@@ -15,10 +15,12 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext js,jsx --fix",
     "format": "prettier --write .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "generate-secrets": "node scripts/generate-secrets.js"
   },
   "dependencies": {
     "cloudinary": "^1.41.3",
+    "dotenv": "^17.2.2",
     "framer-motion": "^10.16.4",
     "g": "^2.0.1",
     "jsonwebtoken": "^9.0.2",

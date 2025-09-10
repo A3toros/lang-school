@@ -7,9 +7,20 @@ const AdminDashboard = () => {
   const [teacherPerformance, setTeacherPerformance] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
   const [loading, setLoading] = useState(true)
+  const [teachers, setTeachers] = useState([])
+  const [selectedTeacherId, setSelectedTeacherId] = useState('')
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return d.toISOString().split('T')[0]
+  })
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0])
+  const [bucket, setBucket] = useState('week')
+  const [analytics, setAnalytics] = useState({ loading: false, data: [], totals: { completed: 0, absent: 0, warned: 0, total: 0 } })
 
   useEffect(() => {
     fetchDashboardData()
+    fetchTeachers()
   }, [])
 
   const fetchDashboardData = async () => {
@@ -26,6 +37,35 @@ const AdminDashboard = () => {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTeachers = async () => {
+    try {
+      const res = await apiService.getTeachers()
+      if (res.success) setTeachers(res.teachers || [])
+    } catch (e) {
+      console.error('Error fetching teachers', e)
+    }
+  }
+
+  const fetchTeacherAnalytics = async () => {
+    if (!selectedTeacherId || !fromDate || !toDate) return
+    setAnalytics(prev => ({ ...prev, loading: true }))
+    try {
+      const res = await apiService.getTeacherAttendanceAnalytics(parseInt(selectedTeacherId), fromDate, toDate, bucket)
+      const rows = res?.data || []
+      const totals = rows.reduce((acc, r) => {
+        acc.completed += Number(r.completed || 0)
+        acc.absent += Number(r.absent || 0)
+        acc.warned += Number(r.warned || 0)
+        acc.total += Number(r.total || 0)
+        return acc
+      }, { completed: 0, absent: 0, warned: 0, total: 0 })
+      setAnalytics({ loading: false, data: rows, totals })
+    } catch (e) {
+      console.error('Teacher analytics error', e)
+      setAnalytics(prev => ({ ...prev, loading: false }))
     }
   }
 
@@ -148,6 +188,62 @@ const AdminDashboard = () => {
               </div>
             </div>
           ))}
+        </div>
+      </motion.div>
+
+      {/* Teacher Date-Range Analytics */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.45 }}
+        className="card p-6"
+      >
+        <h3 className="text-lg font-semibold text-neutral-800 mb-4">Teacher Analytics (Date Range)</h3>
+        <div className="flex flex-col md:flex-row md:items-end md:space-x-4 space-y-3 md:space-y-0">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm text-neutral-600 mb-1">Teacher</label>
+            <select className="input w-full" value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)}>
+              <option value="">Select teacher</option>
+              {teachers.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm text-neutral-600 mb-1">From</label>
+            <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-neutral-600 mb-1">To</label>
+            <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-neutral-600 mb-1">Bucket</label>
+            <select className="input" value={bucket} onChange={e => setBucket(e.target.value)}>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+          </div>
+          <button onClick={fetchTeacherAnalytics} className="btn btn-primary md:ml-auto">Update</button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+          <div className="card p-3 text-center">
+            <div className="text-xs text-neutral-600">Completed</div>
+            <div className="text-2xl font-semibold text-green-600">{analytics.totals.completed}</div>
+          </div>
+          <div className="card p-3 text-center">
+            <div className="text-xs text-neutral-600">Absent</div>
+            <div className="text-2xl font-semibold text-red-600">{analytics.totals.absent}</div>
+          </div>
+          <div className="card p-3 text-center">
+            <div className="text-xs text-neutral-600">Warned</div>
+            <div className="text-2xl font-semibold text-yellow-600">{analytics.totals.warned}</div>
+          </div>
+          <div className="card p-3 text-center">
+            <div className="text-xs text-neutral-600">Total</div>
+            <div className="text-2xl font-semibold text-neutral-800">{analytics.totals.total}</div>
+          </div>
         </div>
       </motion.div>
 

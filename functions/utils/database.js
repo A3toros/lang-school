@@ -1,5 +1,7 @@
-import { Pool } from 'pg'
-import jwt from 'jsonwebtoken'
+require('dotenv').config();
+
+const { Pool } = require('pg')
+const jwt = require('jsonwebtoken')
 
 // Database connection pool
 let pool = null
@@ -66,14 +68,20 @@ const verifyToken = (event) => {
 const errorResponse = (statusCode, message, headers = corsHeaders) => ({
   statusCode,
   headers,
-  body: JSON.stringify({ error: message })
+  body: JSON.stringify({ 
+    success: false,
+    error: message 
+  })
 })
 
 // Success response helper
 const successResponse = (data, statusCode = 200, headers = corsHeaders) => ({
   statusCode,
   headers,
-  body: JSON.stringify(data)
+  body: JSON.stringify({
+    success: true,
+    ...data
+  })
 })
 
 // Database query helper
@@ -143,7 +151,7 @@ const getWeekStart = (date) => {
   return monday.toISOString().split('T')[0]
 }
 
-export {
+module.exports = {
   getPool,
   recreatePool,
   corsHeaders,

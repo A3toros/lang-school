@@ -9,7 +9,9 @@ const ImageUploader = ({
   maxSize = 5 * 1024 * 1024, // 5MB
   acceptedTypes = ['image/jpeg', 'image/png', 'image/webp'],
   transformations = null,
-  className = ''
+  className = '',
+  showUploadArea = true,
+  uploadedImageUrl = null
 }) => {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(null)
@@ -50,7 +52,9 @@ const ImageUploader = ({
       })
 
       if (response.success) {
-        onUpload?.(response.data)
+        // Cloudinary returns data directly in response, not in response.data
+        const imageData = response.secure_url || response.data
+        onUpload?.(imageData)
         setPreview(null)
       } else {
         onError?.(response.error || 'Upload failed')
@@ -104,63 +108,77 @@ const ImageUploader = ({
 
   return (
     <div className={`relative ${className}`}>
-      <motion.div
-        className={`
-          border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200
-          ${dragActive 
-            ? 'border-primary-500 bg-primary-50' 
-            : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
-          }
-          ${uploading ? 'pointer-events-none opacity-50' : ''}
-        `}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-        onClick={handleClick}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={acceptedTypes.join(',')}
-          onChange={handleFileInputChange}
-          className="hidden"
-        />
+      {/* Show uploaded image if available */}
+      {uploadedImageUrl && (
+        <div className="mb-4 flex justify-center">
+          <img
+            src={uploadedImageUrl}
+            alt="Uploaded teacher photo"
+            className="w-32 h-32 object-cover rounded-lg shadow-md"
+          />
+        </div>
+      )}
 
-        {uploading ? (
-          <div className="space-y-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto"></div>
-            <p className="text-sm text-gray-600">Uploading...</p>
-          </div>
-        ) : preview ? (
-          <div className="space-y-2">
-            <img
-              src={preview}
-              alt="Preview"
-              className="max-h-32 mx-auto rounded-lg"
-            />
-            <p className="text-sm text-gray-600">Processing...</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="w-12 h-12 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
-              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
+      {/* Show upload area only if showUploadArea is true */}
+      {showUploadArea && (
+        <motion.div
+          className={`
+            border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200
+            ${dragActive 
+              ? 'border-primary-500 bg-primary-50' 
+              : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+            }
+            ${uploading ? 'pointer-events-none opacity-50' : ''}
+          `}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          onClick={handleClick}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptedTypes.join(',')}
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
+          {uploading ? (
+            <div className="space-y-2">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto"></div>
+              <p className="text-sm text-gray-600">Uploading...</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">
-                Click to upload or drag and drop
-              </p>
-              <p className="text-xs text-gray-500">
-                PNG, JPG, WebP up to {Math.round(maxSize / 1024 / 1024)}MB
-              </p>
+          ) : preview ? (
+            <div className="space-y-2">
+              <img
+                src={preview}
+                alt="Preview"
+                className="max-h-32 mx-auto rounded-lg"
+              />
+              <p className="text-sm text-gray-600">Processing...</p>
             </div>
-          </div>
-        )}
-      </motion.div>
+          ) : (
+            <div className="space-y-2">
+              <div className="w-12 h-12 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  Click to upload or drag and drop
+                </p>
+                <p className="text-xs text-gray-500">
+                  PNG, JPG, WebP up to {Math.round(maxSize / 1024 / 1024)}MB
+                </p>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   )
 }

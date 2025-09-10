@@ -12,7 +12,8 @@ export default defineConfig({
   },
   server: {
     port: 5175, // Port for Netlify dev to proxy to
-    host: true
+    host: true,
+    strictPort: true
   },
   resolve: {
     alias: {
@@ -22,5 +23,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom']
+  },
+  define: {
+    global: 'globalThis'
   }
 })
