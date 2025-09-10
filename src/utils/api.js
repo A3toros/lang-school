@@ -1,4 +1,6 @@
 // API service for making authenticated requests to Netlify Functions
+import apiDebugger from './debug'
+
 const API_BASE_URL = '/api'
 
 class ApiService {
@@ -9,9 +11,99 @@ class ApiService {
   // Get auth headers with token
   getAuthHeaders() {
     const token = localStorage.getItem('accessToken')
-    return {
+    const headers = {
+      'Content-Type': 'application/json'
+    }
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    
+    return headers
+  }
+
+  // Make public request (no authentication)
+  async makePublicRequest(endpoint, options = {}) {
+    const url = `${this.baseURL}${endpoint}`
+    const config = {
+      ...options,
+      headers: {
       'Content-Type': 'application/json',
-      'Authorization': token ? `Bearer ${token}` : ''
+        ...options.headers
+      }
+    }
+
+    const startTime = Date.now()
+    const method = options.method || 'GET'
+
+    // Log request
+    apiDebugger.logRequest(method, url, options.body ? JSON.parse(options.body) : null)
+
+    try {
+      const response = await fetch(url, config)
+      const duration = Date.now() - startTime
+      
+      // Log response status
+      apiDebugger.debug('NETWORK', `Response received for ${method} ${url}`, {
+        status: response.status,
+        statusText: response.statusText,
+        duration: `${duration}ms`,
+        headers: Object.fromEntries(response.headers.entries())
+      })
+      
+      if (!response.ok) {
+        // Handle 502 Bad Gateway (Netlify Functions not deployed)
+        if (response.status === 502) {
+          const error = new Error('Service temporarily unavailable. Please try again later.')
+          apiDebugger.logError(method, url, error)
+          throw error
+        }
+        
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        const error = new Error(errorData.error || `HTTP ${response.status}`)
+        apiDebugger.logError(method, url, error)
+        throw error
+      }
+
+      const data = await response.json()
+      
+      // Log successful response
+      apiDebugger.logResponse(method, url, { status: response.status, data }, duration)
+      
+      return data
+    } catch (error) {
+      const duration = Date.now() - startTime
+      
+      // Log error
+      apiDebugger.logError(method, url, error)
+      
+      // Return a structured error response for better handling
+      if (error.message.includes('Service temporarily unavailable')) {
+        const errorResponse = {
+          success: false,
+          error: 'Service temporarily unavailable',
+          status: 502
+        }
+        apiDebugger.logResponse(method, url, errorResponse, duration)
+        return errorResponse
+      }
+      
+      // Handle network errors (backend not running)
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        apiDebugger.warning('API', 'Backend server not available, using fallback data', { 
+          endpoint, 
+          error: error.message 
+        })
+        const errorResponse = {
+          success: false,
+          error: 'Backend server not available',
+          status: 0
+        }
+        apiDebugger.logResponse(method, url, errorResponse, duration)
+        return errorResponse
+      }
+      
+      throw error
     }
   }
 
@@ -26,30 +118,59 @@ class ApiService {
       }
     }
 
+    const startTime = Date.now()
+    const method = options.method || 'GET'
+
+    // Log request
+    apiDebugger.logRequest(method, url, options.body ? JSON.parse(options.body) : null)
+
     try {
       const response = await fetch(url, config)
+      const duration = Date.now() - startTime
+      
+      // Log response status
+      apiDebugger.debug('NETWORK', `Response received for ${method} ${url}`, {
+        status: response.status,
+        statusText: response.statusText,
+        duration: `${duration}ms`,
+        headers: Object.fromEntries(response.headers.entries())
+      })
       
       if (!response.ok) {
         // Handle 502 Bad Gateway (Netlify Functions not deployed)
         if (response.status === 502) {
-          throw new Error('Service temporarily unavailable. Please try again later.')
+          const error = new Error('Service temporarily unavailable. Please try again later.')
+          apiDebugger.logError(method, url, error)
+          throw error
         }
         
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        const error = new Error(errorData.error || `HTTP ${response.status}`)
+        apiDebugger.logError(method, url, error)
+        throw error
       }
 
-      return await response.json()
+      const data = await response.json()
+      
+      // Log successful response
+      apiDebugger.logResponse(method, url, { status: response.status, data }, duration)
+      
+      return data
     } catch (error) {
-      console.error(`API request failed: ${endpoint}`, error)
+      const duration = Date.now() - startTime
+      
+      // Log error
+      apiDebugger.logError(method, url, error)
       
       // Return a structured error response for better handling
       if (error.message.includes('Service temporarily unavailable')) {
-        return {
+        const errorResponse = {
           success: false,
           error: 'Service temporarily unavailable',
           status: 502
         }
+        apiDebugger.logResponse(method, url, errorResponse, duration)
+        return errorResponse
       }
       
       throw error
@@ -58,17 +179,51 @@ class ApiService {
 
   // Authentication API
   async login(username, password) {
-    return this.makeRequest('/auth/login', {
+    apiDebugger.info('AUTH', 'Attempting login', { username, hasPassword: !!password })
+    
+    try {
+      const result = await this.makeRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password })
     })
+      
+      if (result.success) {
+        apiDebugger.success('AUTH', 'Login successful', { 
+          username, 
+          role: result.user?.role,
+          userId: result.user?.id 
+        })
+      } else {
+        apiDebugger.warning('AUTH', 'Login failed', { username, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('AUTH', 'Login error', { username, error: error.message })
+      throw error
+    }
   }
 
   async refreshToken(refreshToken) {
-    return this.makeRequest('/auth/refresh', {
+    apiDebugger.debug('AUTH', 'Refreshing token', { hasToken: !!refreshToken })
+    
+    try {
+      const result = await this.makeRequest('/auth/refresh', {
       method: 'POST',
       body: JSON.stringify({ refreshToken })
     })
+      
+      if (result.success) {
+        apiDebugger.success('AUTH', 'Token refreshed successfully')
+      } else {
+        apiDebugger.warning('AUTH', 'Token refresh failed', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('AUTH', 'Token refresh error', { error: error.message })
+      throw error
+    }
   }
 
   async logout() {
@@ -79,6 +234,28 @@ class ApiService {
 
   async verifyToken() {
     return this.makeRequest('/auth/verify')
+  }
+
+  async changePassword(oldPassword, newPassword) {
+    return this.makeRequest('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword })
+    })
+  }
+
+  async getProfile() {
+    return this.makeRequest('/auth/profile')
+  }
+
+  async validateCredentials(username, password) {
+    return this.makeRequest('/auth/validate-credentials', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    })
+  }
+
+  async checkUsername(username) {
+    return this.makeRequest(`/auth/check-username/${encodeURIComponent(username)}`)
   }
 
   // Teachers API
@@ -130,11 +307,144 @@ class ApiService {
   }
 
   async getRandomTeachers(count = 3) {
-    return this.makeRequest(`/teachers/random/${count}`)
+    apiDebugger.info('TEACHERS', 'Fetching random teachers (public)', { count })
+    
+    try {
+      const result = await this.makePublicRequest(`/teachers/random/${count}`)
+      
+      if (result.success) {
+        apiDebugger.success('TEACHERS', 'Random teachers fetched', { 
+          count: result.teachers?.length || 0,
+          teacherIds: result.teachers?.map(t => t.id) || []
+        })
+        return result
+      } else {
+        apiDebugger.warning('TEACHERS', 'Failed to fetch random teachers from API', { 
+          count, 
+          error: result.error 
+        })
+        
+        // Return fallback data when API fails
+        const fallbackTeachers = [
+          {
+            id: 1,
+            name: 'Sarah Johnson',
+            description: 'Experienced English teacher with 10+ years of experience. Specializes in business English and conversation practice.',
+            photo_url: '/pics/teachers/sarah.jpg'
+          },
+          {
+            id: 2,
+            name: 'Michael Chen',
+            description: 'Native Mandarin speaker teaching Chinese language and culture. Patient and encouraging teaching style.',
+            photo_url: '/pics/teachers/michael.jpg'
+          },
+          {
+            id: 3,
+            name: 'Elena Rodriguez',
+            description: 'Spanish teacher from Madrid with expertise in grammar and pronunciation. Loves teaching through music and culture.',
+            photo_url: '/pics/teachers/elena.jpg'
+          }
+        ].slice(0, count)
+        
+        apiDebugger.info('TEACHERS', 'Using fallback teacher data', { 
+          count: fallbackTeachers.length,
+          reason: 'API unavailable'
+        })
+        
+        return {
+          success: true,
+          teachers: fallbackTeachers,
+          fallback: true
+        }
+      }
+    } catch (error) {
+      apiDebugger.error('TEACHERS', 'Error fetching random teachers', { 
+        count, 
+        error: error.message 
+      })
+      
+      // Return fallback data on error
+      const fallbackTeachers = [
+        {
+          id: 1,
+          name: 'Sarah Johnson',
+          description: 'Experienced English teacher with 10+ years of experience. Specializes in business English and conversation practice.',
+          photo_url: '/pics/teachers/sarah.jpg'
+        },
+        {
+          id: 2,
+          name: 'Michael Chen',
+          description: 'Native Mandarin speaker teaching Chinese language and culture. Patient and encouraging teaching style.',
+          photo_url: '/pics/teachers/michael.jpg'
+        },
+        {
+          id: 3,
+          name: 'Elena Rodriguez',
+          description: 'Spanish teacher from Madrid with expertise in grammar and pronunciation. Loves teaching through music and culture.',
+          photo_url: '/pics/teachers/elena.jpg'
+        }
+      ].slice(0, count)
+      
+      apiDebugger.info('TEACHERS', 'Using fallback teacher data due to error', { 
+        count: fallbackTeachers.length,
+        error: error.message
+      })
+      
+      return {
+        success: true,
+        teachers: fallbackTeachers,
+        fallback: true
+      }
+    }
   }
 
   async getTeacherMonthlyStats(teacherId, year, month) {
     return this.makeRequest(`/teachers/${teacherId}/monthly-stats/${year}/${month}`)
+  }
+
+  async getTeacherAttendance(teacherId, startDate, endDate) {
+    const params = new URLSearchParams()
+    if (startDate) params.append('start_date', startDate)
+    if (endDate) params.append('end_date', endDate)
+    const queryString = params.toString()
+    return this.makeRequest(`/teachers/${teacherId}/attendance${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getTeacherLessons(teacherId, startDate, endDate, page, limit) {
+    const params = new URLSearchParams()
+    if (startDate) params.append('start_date', startDate)
+    if (endDate) params.append('end_date', endDate)
+    if (page) params.append('page', page)
+    if (limit) params.append('limit', limit)
+    const queryString = params.toString()
+    return this.makeRequest(`/teachers/${teacherId}/lessons${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async uploadTeacherPhoto(teacherId, photoUrl) {
+    return this.makeRequest(`/teachers/${teacherId}/upload-photo`, {
+      method: 'POST',
+      body: JSON.stringify({ photo_url: photoUrl })
+    })
+  }
+
+  async searchTeachers(query, page, limit) {
+    const params = new URLSearchParams()
+    if (query) params.append('q', query)
+    if (page) params.append('page', page)
+    if (limit) params.append('limit', limit)
+    const queryString = params.toString()
+    return this.makeRequest(`/teachers/search${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getInactiveTeachers() {
+    return this.makeRequest('/teachers/inactive')
+  }
+
+  async bulkUpdateTeachers(teacherIds, updates) {
+    return this.makeRequest('/teachers/bulk-update', {
+      method: 'POST',
+      body: JSON.stringify({ teacherIds, updates })
+    })
   }
 
   async searchTeachers(query, page = 1, limit = 50) {
@@ -230,6 +540,17 @@ class ApiService {
     return this.makeRequest('/students/export')
   }
 
+  async getStudentTeachers(studentId) {
+    return this.makeRequest(`/students/${studentId}/teachers`)
+  }
+
+  async bulkUpdateStudents(studentIds, updates) {
+    return this.makeRequest('/students/bulk-update', {
+      method: 'POST',
+      body: JSON.stringify({ studentIds, updates })
+    })
+  }
+
   // Schedules API
   async getSchedules(filters = {}) {
     const params = new URLSearchParams()
@@ -244,6 +565,81 @@ class ApiService {
 
   async getWeeklySchedule(date) {
     return this.makeRequest(`/schedules/week/${date}`)
+  }
+
+  async createSchedule(scheduleData) {
+    return this.makeRequest('/schedules', {
+      method: 'POST',
+      body: JSON.stringify(scheduleData)
+    })
+  }
+
+  async updateSchedule(scheduleId, scheduleData) {
+    return this.makeRequest(`/schedules/${scheduleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(scheduleData)
+    })
+  }
+
+  async deleteSchedule(scheduleId) {
+    return this.makeRequest(`/schedules/${scheduleId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async bulkUpdateSchedules(schedules) {
+    return this.makeRequest('/schedules/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ schedules })
+    })
+  }
+
+  async getScheduleConflicts(weekStart) {
+    const params = weekStart ? `?week_start=${weekStart}` : ''
+    return this.makeRequest(`/schedules/conflicts${params}`)
+  }
+
+  async getTeacherSchedules(teacherId, weekStart) {
+    const params = weekStart ? `?week_start=${weekStart}` : ''
+    return this.makeRequest(`/schedules/teacher/${teacherId}${params}`)
+  }
+
+  async getStudentSchedules(studentId, weekStart) {
+    const params = weekStart ? `?week_start=${weekStart}` : ''
+    return this.makeRequest(`/schedules/student/${studentId}${params}`)
+  }
+
+  async getMonthlySchedules(year, month) {
+    return this.makeRequest(`/schedules/month/${year}/${month}`)
+  }
+
+  async saveWeekSchedule(weekStartDate, schedules) {
+    return this.makeRequest('/schedules/save-week', {
+      method: 'POST',
+      body: JSON.stringify({ week_start_date: weekStartDate, schedules })
+    })
+  }
+
+  async discardChanges() {
+    return this.makeRequest('/schedules/discard-changes', {
+      method: 'POST'
+    })
+  }
+
+  async getAvailableSlots(teacherId, dayOfWeek, weekStartDate) {
+    const params = new URLSearchParams({
+      teacher_id: teacherId,
+      day_of_week: dayOfWeek,
+      week_start_date: weekStartDate
+    })
+    return this.makeRequest(`/schedules/available-slots?${params}`)
+  }
+
+  async reassignStudent(studentId, newTeacherId, scheduleIds) {
+    return this.makeRequest('/schedules/reassign-student', {
+      method: 'POST',
+      body: JSON.stringify({ student_id: studentId, new_teacher_id: newTeacherId, schedule_ids: scheduleIds })
+    })
   }
 
   async createSchedule(scheduleData) {
@@ -340,12 +736,54 @@ class ApiService {
   async markAttendance(scheduleId, status, attendanceDate) {
     return this.makeRequest('/attendance/mark', {
       method: 'POST',
-      body: JSON.stringify({
-        schedule_id: scheduleId,
-        status,
-        attendance_date: attendanceDate
-      })
+      body: JSON.stringify({ schedule_id: scheduleId, status, attendance_date: attendanceDate })
     })
+  }
+
+  async updateAttendance(attendanceId, status, attendanceDate) {
+    return this.makeRequest(`/attendance/${attendanceId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, attendance_date: attendanceDate })
+    })
+  }
+
+  async getTeacherAttendance(teacherId, period) {
+    const params = period ? `?period=${period}` : ''
+    return this.makeRequest(`/attendance/teacher/${teacherId}${params}`)
+  }
+
+  async getStudentAttendance(studentId, period) {
+    const params = period ? `?period=${period}` : ''
+    return this.makeRequest(`/attendance/student/${studentId}${params}`)
+  }
+
+  async getAttendanceStats(teacherId, studentId, period) {
+    const params = new URLSearchParams()
+    if (teacherId) params.append('teacher_id', teacherId)
+    if (studentId) params.append('student_id', studentId)
+    if (period) params.append('period', period)
+    const queryString = params.toString()
+    return this.makeRequest(`/attendance/stats${queryString ? `?${queryString}` : ''}`)
+  }
+
+  async getWeeklyAttendance(date) {
+    return this.makeRequest(`/attendance/week/${date}`)
+  }
+
+  async getMonthlyAttendance(year, month) {
+    return this.makeRequest(`/attendance/month/${year}/${month}`)
+  }
+
+  async bulkMarkAttendance(attendanceUpdates) {
+    return this.makeRequest('/attendance/bulk-mark', {
+      method: 'POST',
+      body: JSON.stringify({ attendance_updates: attendanceUpdates })
+    })
+  }
+
+  async exportAttendance(period) {
+    const params = period ? `?period=${period}` : ''
+    return this.makeRequest(`/attendance/export${params}`)
   }
 
   async updateAttendance(attendanceId, status, attendanceDate) {
@@ -546,9 +984,6 @@ class ApiService {
     })
   }
 
-  async getActiveCourses() {
-    return this.makeRequest('/content/courses/active')
-  }
 
   async toggleCourse(courseId, isActive) {
     return this.makeRequest(`/content/courses/${courseId}/toggle`, {
@@ -676,138 +1111,312 @@ class ApiService {
     return this.makeRequest(`/cloudinary/images${queryString ? `?${queryString}` : ''}`)
   }
 
-  // Analytics API
-  async getSystemOverview(period = '30') {
-    return this.makeRequest(`/analytics/overview?period=${period}`)
+  // Students API
+  async getStudents(filters = {}) {
+    apiDebugger.info('STUDENTS', 'Fetching students', { filters })
+    
+    try {
+      const params = new URLSearchParams()
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          params.append(key, value)
+        }
+      })
+      
+      const queryString = params.toString()
+      const result = await this.makeRequest(`/students${queryString ? `?${queryString}` : ''}`)
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Students fetched successfully', { 
+          count: result.students?.length || 0,
+          total: result.total || 0
+        })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to fetch students', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error fetching students', { error: error.message })
+      throw error
+    }
   }
 
-  async getTeacherAnalytics(period = '30') {
-    return this.makeRequest(`/analytics/teachers?period=${period}`)
+  async getStudent(studentId) {
+    apiDebugger.info('STUDENTS', 'Fetching student', { studentId })
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}`)
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Student fetched successfully', { studentId })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to fetch student', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error fetching student', { studentId, error: error.message })
+      throw error
+    }
   }
 
-  async getStudentAnalytics(period = '30') {
-    return this.makeRequest(`/analytics/students?period=${period}`)
-  }
-
-  async getAttendanceAnalytics(period = '30') {
-    return this.makeRequest(`/analytics/attendance?period=${period}`)
-  }
-
-  async getMonthlyTeacherStats(teacherId, year, month) {
-    return this.makeRequest(`/analytics/monthly/${teacherId}?year=${year}&month=${month}`)
-  }
-
-  async getPerformanceTrends(period = '90') {
-    return this.makeRequest(`/analytics/trends?period=${period}`)
-  }
-
-  async exportAnalyticsData(type, format = 'json') {
-    return this.makeRequest('/analytics/export', {
+  async createStudent(studentData) {
+    apiDebugger.info('STUDENTS', 'Creating student', { studentData })
+    
+    try {
+      const result = await this.makeRequest('/students', {
       method: 'POST',
-      body: JSON.stringify({ type, format })
-    })
+        body: JSON.stringify(studentData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Student created successfully', { studentId: result.student?.id })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to create student', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error creating student', { error: error.message })
+      throw error
+    }
   }
 
-  async getDashboardData() {
-    return this.makeRequest('/analytics/dashboard')
+  async updateStudent(studentId, studentData) {
+    apiDebugger.info('STUDENTS', 'Updating student', { studentId, studentData })
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}`, {
+        method: 'PUT',
+        body: JSON.stringify(studentData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Student updated successfully', { studentId })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to update student', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error updating student', { studentId, error: error.message })
+      throw error
+    }
   }
 
-  async getPerformanceMetrics(teacherId = null) {
-    const params = teacherId ? `?teacherId=${teacherId}` : ''
-    return this.makeRequest(`/analytics/performance${params}`)
+  async deleteStudent(studentId) {
+    apiDebugger.info('STUDENTS', 'Deleting student', { studentId })
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Student deleted successfully', { studentId })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to delete student', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error deleting student', { studentId, error: error.message })
+      throw error
+    }
   }
 
-  async getAnalyticsReports(type = 'overview', period = '30') {
-    return this.makeRequest(`/analytics/reports?type=${type}&period=${period}`)
+  // Content API
+  async getMissionContent() {
+    apiDebugger.info('CONTENT', 'Fetching mission content')
+    
+    try {
+      const result = await this.makeRequest('/content/mission')
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Mission content fetched successfully')
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to fetch mission content', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error fetching mission content', { error: error.message })
+      throw error
+    }
   }
 
-  // Users API
-  async getAllUsers(filters = {}) {
-    const params = new URLSearchParams()
-    if (filters.page) params.append('page', filters.page)
-    if (filters.limit) params.append('limit', filters.limit)
-    if (filters.role) params.append('role', filters.role)
-    if (filters.is_active !== undefined) params.append('is_active', filters.is_active)
-    const queryString = params.toString()
-    return this.makeRequest(`/users${queryString ? `?${queryString}` : ''}`)
-  }
-
-  async getUser(userId) {
-    return this.makeRequest(`/users/${userId}`)
-  }
-
-  async createUser(userData) {
-    return this.makeRequest('/users', {
-      method: 'POST',
-      body: JSON.stringify(userData)
-    })
-  }
-
-  async updateUser(userId, userData) {
-    return this.makeRequest(`/users/${userId}`, {
+  async updateMissionContent(missionData) {
+    apiDebugger.info('CONTENT', 'Updating mission content', { missionData })
+    
+    try {
+      const result = await this.makeRequest('/content/mission', {
       method: 'PUT',
-      body: JSON.stringify(userData)
-    })
+        body: JSON.stringify(missionData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Mission content updated successfully')
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to update mission content', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error updating mission content', { error: error.message })
+      throw error
+    }
   }
 
-  async deleteUser(userId) {
-    return this.makeRequest(`/users/${userId}`, {
-      method: 'DELETE'
-    })
+  async getCourses() {
+    apiDebugger.info('CONTENT', 'Fetching courses')
+    
+    try {
+      const result = await this.makeRequest('/content/courses')
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Courses fetched successfully', { 
+          count: result.courses?.length || 0 
+        })
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to fetch courses', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error fetching courses', { error: error.message })
+      throw error
+    }
   }
 
-  async suspendUser(userId, reason) {
-    return this.makeRequest(`/users/${userId}/suspend`, {
+  async createCourse(courseData) {
+    apiDebugger.info('CONTENT', 'Creating course', { courseData })
+    
+    try {
+      const result = await this.makeRequest('/content/courses', {
       method: 'POST',
-      body: JSON.stringify({ reason })
-    })
+        body: JSON.stringify(courseData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Course created successfully', { courseId: result.course?.id })
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to create course', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error creating course', { error: error.message })
+      throw error
+    }
   }
 
-  async unsuspendUser(userId) {
-    return this.makeRequest(`/users/${userId}/unsuspend`, {
-      method: 'POST'
-    })
+  async updateCourse(courseId, courseData) {
+    apiDebugger.info('CONTENT', 'Updating course', { courseId, courseData })
+    
+    try {
+      const result = await this.makeRequest(`/content/courses/${courseId}`, {
+        method: 'PUT',
+        body: JSON.stringify(courseData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Course updated successfully', { courseId })
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to update course', { courseId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error updating course', { courseId, error: error.message })
+      throw error
+    }
   }
 
-  async getUserActivity(userId, period = '30') {
-    return this.makeRequest(`/users/activity/${userId}?period=${period}`)
+  async deleteCourse(courseId) {
+    apiDebugger.info('CONTENT', 'Deleting course', { courseId })
+    
+    try {
+      const result = await this.makeRequest(`/content/courses/${courseId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Course deleted successfully', { courseId })
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to delete course', { courseId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error deleting course', { courseId, error: error.message })
+      throw error
+    }
   }
 
-  async getUserRoles() {
-    return this.makeRequest('/users/roles')
+  async toggleCourse(courseId, isActive) {
+    apiDebugger.info('CONTENT', 'Toggling course', { courseId, isActive })
+    
+    try {
+      const result = await this.makeRequest(`/content/courses/${courseId}/toggle`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: isActive })
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Course toggled successfully', { courseId, isActive })
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to toggle course', { courseId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error toggling course', { courseId, error: error.message })
+      throw error
+    }
   }
 
-  // Dashboard API
-  async getAdminDashboard(period = '30') {
-    return this.makeRequest(`/dashboard/admin?period=${period}`)
+  async getShowcaseSettings() {
+    apiDebugger.info('CONTENT', 'Fetching showcase settings')
+    
+    try {
+      const result = await this.makeRequest('/content/showcase')
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Showcase settings fetched successfully')
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to fetch showcase settings', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error fetching showcase settings', { error: error.message })
+      throw error
+    }
   }
 
-  async getTeacherDashboard(period = '30') {
-    return this.makeRequest(`/dashboard/teacher?period=${period}`)
+  async updateShowcaseSettings(settings) {
+    apiDebugger.info('CONTENT', 'Updating showcase settings', { settings })
+    
+    try {
+      const result = await this.makeRequest('/content/showcase', {
+        method: 'PUT',
+        body: JSON.stringify(settings)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Showcase settings updated successfully')
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to update showcase settings', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error updating showcase settings', { error: error.message })
+      throw error
+    }
   }
 
-  async getDashboardStats(period = '30') {
-    return this.makeRequest(`/dashboard/stats?period=${period}`)
-  }
-
-  async getNotifications() {
-    return this.makeRequest('/dashboard/notifications')
-  }
-
-  async markNotificationRead(notificationId) {
-    return this.makeRequest('/dashboard/notifications/read', {
-      method: 'POST',
-      body: JSON.stringify({ notification_id: notificationId })
-    })
-  }
-
-  async getUpcomingLessons(days = 7) {
-    return this.makeRequest(`/dashboard/upcoming?days=${days}`)
-  }
-
-  async getRecentActivity(limit = 10) {
-    return this.makeRequest(`/dashboard/recent?limit=${limit}`)
-  }
 }
 
 // Create and export a singleton instance

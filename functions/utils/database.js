@@ -11,12 +11,26 @@ const getPool = () => {
       ssl: {
         rejectUnauthorized: false
       },
-      max: 20,
+      max: 10,
+      min: 2,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 10000,
+      acquireTimeoutMillis: 10000,
+      createTimeoutMillis: 10000,
+      destroyTimeoutMillis: 5000,
+      reapIntervalMillis: 1000,
+      createRetryIntervalMillis: 200,
     })
   }
   return pool
+}
+
+// Function to recreate pool on connection errors
+const recreatePool = () => {
+  if (pool) {
+    pool.end()
+    pool = null
+  }
 }
 
 // CORS headers
@@ -35,7 +49,17 @@ const verifyToken = (event) => {
   }
 
   const token = authHeader.split(' ')[1]
-  return jwt.verify(token, process.env.JWT_SECRET)
+  const decoded = jwt.verify(token, process.env.JWT_SECRET)
+  
+  // Log token verification for debugging
+  console.log('Token verified for user:', {
+    userId: decoded.userId,
+    username: decoded.username,
+    role: decoded.role,
+    teacherId: decoded.teacherId
+  })
+  
+  return decoded
 }
 
 // Error response helper
@@ -55,12 +79,41 @@ const successResponse = (data, statusCode = 200, headers = corsHeaders) => ({
 // Database query helper
 const query = async (text, params = []) => {
   const pool = getPool()
+  let client = null
+  
   try {
-    const result = await pool.query(text, params)
+    console.log('🔍 [DATABASE] Executing query', {
+      query: text.substring(0, 100) + '...',
+      params: params.length
+    })
+    
+    client = await pool.connect()
+    const result = await client.query(text, params)
+    
+    console.log('✅ [DATABASE] Query executed successfully', {
+      rowCount: result.rowCount,
+      rows: result.rows.length
+    })
+    
     return result
   } catch (error) {
-    console.error('Database query error:', error)
+    console.error('❌ [DATABASE] Query error:', {
+      message: error.message,
+      code: error.code,
+      query: text.substring(0, 100) + '...'
+    })
+    
+    // If it's a connection error, try to recreate the pool
+    if (error.code === 'ECONNRESET' || error.code === 'ENOTFOUND' || error.message.includes('Connection terminated')) {
+      console.log('🔄 [DATABASE] Connection error detected, recreating pool')
+      recreatePool()
+    }
+    
     throw error
+  } finally {
+    if (client) {
+      client.release()
+    }
   }
 }
 
@@ -92,6 +145,7 @@ const getWeekStart = (date) => {
 
 export {
   getPool,
+  recreatePool,
   corsHeaders,
   verifyToken,
   errorResponse,

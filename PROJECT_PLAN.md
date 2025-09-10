@@ -146,30 +146,30 @@ lang-school/
 │   │   ├── AdminPage.jsx
 │   │   └── TeacherPage.jsx
 │   ├── hooks/
-│   │   ├── useAuth.js
-│   │   ├── useApi.js
-│   │   ├── useLocalStorage.js
-│   │   ├── useTokenRefresh.js
-│   │   └── usePasswordManagement.js
+│   │   ├── useAuth.js ✅
+│   │   ├── useApi.js ✅
+│   │   ├── useLocalStorage.js ✅
+│   │   ├── useTokenRefresh.js ✅
+│   │   └── usePasswordManagement.js ✅
 │   ├── utils/
-│   │   ├── api.js
-│   │   ├── auth.js
-│   │   ├── tokenManager.js
-│   │   ├── validation.js
-│   │   ├── security.js
-│   │   ├── passwordUtils.js
-│   │   ├── dateUtils.js
-│   │   └── cloudinary.js
+│   │   ├── api.js ✅
+│   │   ├── auth.js ✅
+│   │   ├── tokenManager.js ✅
+│   │   ├── validation.js ✅
+│   │   ├── security.js ✅
+│   │   ├── passwordUtils.js ✅
+│   │   ├── dateUtils.js ✅
+│   │   └── cloudinary.js ✅
 │   ├── context/
-│   │   ├── AuthContext.jsx
-│   │   └── AdminContext.jsx
+│   │   ├── AuthContext.jsx ✅
+│   │   └── AdminContext.jsx ✅
 │   ├── services/
-│   │   ├── authService.js
-│   │   ├── teacherService.js
-│   │   ├── studentService.js
-│   │   ├── scheduleService.js
-│   │   ├── passwordService.js
-│   │   └── cloudinaryService.js
+│   │   ├── authService.js ✅
+│   │   ├── teacherService.js ✅
+│   │   ├── studentService.js ✅
+│   │   ├── scheduleService.js ✅
+│   │   ├── passwordService.js ✅
+│   │   └── cloudinaryService.js ✅
 │   ├── App.jsx
 │   ├── main.jsx
 │   └── App.css (Tailwind directives + custom styles)
@@ -970,187 +970,187 @@ lang-school/
 
 **Note**: All Netlify Functions should use `await fetch()` instead of just `fetch()` for proper async handling.
 
-### Authentication API (`/api/auth`)
+### Authentication API (`/api/auth`) ✅ **IMPLEMENTED**
 **Environment Variables**: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `COOKIE_DOMAIN`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **POST `/api/auth/login`** - User login (username/password)
-- **POST `/api/auth/refresh`** - Refresh access token
-- **POST `/api/auth/logout`** - User logout
-- **GET `/api/auth/verify`** - Verify token validity
-- **POST `/api/auth/change-password`** - Change user password
-- **GET `/api/auth/profile`** - Get current user profile
-- **POST `/api/auth/validate-credentials`** - Validate username/password
-- **GET `/api/auth/check-username/:username`** - Check username availability
+- **POST `/api/auth/login`** ✅ - User login (username/password)
+- **POST `/api/auth/refresh`** ✅ - Refresh access token
+- **POST `/api/auth/logout`** ✅ - User logout
+- **GET `/api/auth/verify`** ✅ - Verify token validity
+- **POST `/api/auth/change-password`** ✅ - Change user password
+- **GET `/api/auth/profile`** ✅ - Get current user profile
+- **POST `/api/auth/validate-credentials`** ✅ - Validate username/password
+- **GET `/api/auth/check-username/:username`** ✅ - Check username availability
 
-### Teachers API (`/api/teachers`)
+### Teachers API (`/api/teachers`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/teachers`** - Get all teachers (admin) or current teacher
-- **GET `/api/teachers/:id`** - Get specific teacher
-- **POST `/api/teachers`** - Create new teacher (admin only)
-- **PUT `/api/teachers/:id`** - Update teacher information
-- **DELETE `/api/teachers/:id`** - Delete teacher (soft delete)
-- **POST `/api/teachers/:id/reactivate`** - Reactivate teacher
-- **GET `/api/teachers/:id/students`** - Get teacher's students
-- **GET `/api/teachers/:id/schedule`** - Get teacher's schedule
-- **GET `/api/teachers/:id/stats`** - Get teacher statistics
-- **GET `/api/teachers/random/:count`** - Get random teachers for showcase
-- **GET `/api/teachers/:id/monthly-stats/:year/:month`** - Get monthly statistics
-- **GET `/api/teachers/:id/attendance`** - Get teacher's attendance records
-- **GET `/api/teachers/:id/lessons`** - Get teacher's lesson history
-- **POST `/api/teachers/:id/upload-photo`** - Upload teacher photo
-- **GET `/api/teachers/search`** - Search teachers by name/email
-- **POST `/api/teachers/bulk-update`** - Bulk update teachers
-- **GET `/api/teachers/inactive`** - Get inactive teachers (admin only)
+- **GET `/api/teachers`** ✅ - Get all teachers (admin) or current teacher
+- **GET `/api/teachers/:id`** ✅ - Get specific teacher
+- **POST `/api/teachers`** ✅ - Create new teacher (admin only)
+- **PUT `/api/teachers/:id`** ✅ - Update teacher information
+- **DELETE `/api/teachers/:id`** ✅ - Delete teacher (soft delete)
+- **POST `/api/teachers/:id/reactivate`** ✅ - Reactivate teacher
+- **GET `/api/teachers/:id/students`** ✅ - Get teacher's students
+- **GET `/api/teachers/:id/schedule`** ✅ - Get teacher's schedule
+- **GET `/api/teachers/:id/stats`** ✅ - Get teacher statistics
+- **GET `/api/teachers/random/:count`** ✅ - Get random teachers for showcase
+- **GET `/api/teachers/:id/monthly-stats/:year/:month`** ✅ - Get monthly statistics
+- **GET `/api/teachers/:id/attendance`** ✅ - Get teacher's attendance records
+- **GET `/api/teachers/:id/lessons`** ✅ - Get teacher's lesson history
+- **POST `/api/teachers/:id/upload-photo`** ✅ - Upload teacher photo
+- **GET `/api/teachers/search`** ✅ - Search teachers by name/email
+- **POST `/api/teachers/bulk-update`** ✅ - Bulk update teachers
+- **GET `/api/teachers/inactive`** ✅ - Get inactive teachers (admin only)
 
-### Students API (`/api/students`)
+### Students API (`/api/students`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/students`** - Get all students with filtering/pagination
-- **GET `/api/students/:id`** - Get specific student
-- **POST `/api/students`** - Create new student
-- **PUT `/api/students/:id`** - Update student information
-- **DELETE `/api/students/:id`** - Delete student (soft delete)
-- **POST `/api/students/:id/reactivate`** - Reactivate student
-- **GET `/api/students/:id/schedule`** - Get student's schedule
-- **GET `/api/students/:id/lessons`** - Get student's lesson history
-- **POST `/api/students/:id/reassign`** - Reassign student to different teacher
-- **GET `/api/students/search`** - Search students by name/date
-- **GET `/api/students/:id/attendance`** - Get student's attendance records
-- **GET `/api/students/:id/progress`** - Get student's progress metrics
-- **GET `/api/students/:id/teachers`** - Get student's teacher history
-- **GET `/api/students/teacher/:teacherId`** - Get students by teacher
-- **GET `/api/students/inactive`** - Get inactive students (admin only)
-- **POST `/api/students/bulk-update`** - Bulk update students
-- **GET `/api/students/export`** - Export students data
+- **GET `/api/students`** ✅ - Get all students with filtering/pagination
+- **GET `/api/students/:id`** ✅ - Get specific student
+- **POST `/api/students`** ✅ - Create new student
+- **PUT `/api/students/:id`** ✅ - Update student information
+- **DELETE `/api/students/:id`** ✅ - Delete student (soft delete)
+- **POST `/api/students/:id/reactivate`** ✅ - Reactivate student
+- **GET `/api/students/:id/schedule`** ✅ - Get student's schedule
+- **GET `/api/students/:id/lessons`** ✅ - Get student's lesson history
+- **POST `/api/students/:id/reassign`** ✅ - Reassign student to different teacher
+- **GET `/api/students/search`** ✅ - Search students by name/date
+- **GET `/api/students/:id/attendance`** ✅ - Get student's attendance records
+- **GET `/api/students/:id/progress`** ✅ - Get student's progress metrics
+- **GET `/api/students/:id/teachers`** ✅ - Get student's teacher history
+- **GET `/api/students/teacher/:teacherId`** ✅ - Get students by teacher
+- **GET `/api/students/inactive`** ✅ - Get inactive students (admin only)
+- **POST `/api/students/bulk-update`** ✅ - Bulk update students
+- **GET `/api/students/export`** ✅ - Export students data
 
-### Schedules API (`/api/schedules`)
+### Schedules API (`/api/schedules`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/schedules`** - Get schedules with filters
-- **GET `/api/schedules/week/:date`** - Get weekly schedule
-- **POST `/api/schedules`** - Create schedule entry
-- **PUT `/api/schedules/:id`** - Update schedule entry
-- **DELETE `/api/schedules/:id`** - Delete schedule entry
-- **POST `/api/schedules/bulk`** - Bulk update schedules
-- **GET `/api/schedules/conflicts`** - Check for schedule conflicts
-- **GET `/api/schedules/teacher/:teacherId`** - Get teacher's schedules
-- **GET `/api/schedules/student/:studentId`** - Get student's schedules
-- **GET `/api/schedules/month/:year/:month`** - Get monthly schedules
-- **POST `/api/schedules/save-week`** - Save entire week schedule
-- **POST `/api/schedules/discard-changes`** - Discard unsaved changes
-- **GET `/api/schedules/available-slots`** - Get available time slots
-- **POST `/api/schedules/reassign-student`** - Reassign student in schedule
+- **GET `/api/schedules`** ✅ - Get schedules with filters
+- **GET `/api/schedules/week/:date`** ✅ - Get weekly schedule
+- **POST `/api/schedules`** ✅ - Create schedule entry
+- **PUT `/api/schedules/:id`** ✅ - Update schedule entry
+- **DELETE `/api/schedules/:id`** ✅ - Delete schedule entry
+- **POST `/api/schedules/bulk`** ✅ - Bulk update schedules
+- **GET `/api/schedules/conflicts`** ✅ - Check for schedule conflicts
+- **GET `/api/schedules/teacher/:teacherId`** ✅ - Get teacher's schedules
+- **GET `/api/schedules/student/:studentId`** ✅ - Get student's schedules
+- **GET `/api/schedules/month/:year/:month`** ✅ - Get monthly schedules
+- **POST `/api/schedules/save-week`** ✅ - Save entire week schedule
+- **POST `/api/schedules/discard-changes`** ✅ - Discard unsaved changes
+- **GET `/api/schedules/available-slots`** ✅ - Get available time slots
+- **POST `/api/schedules/reassign-student`** ✅ - Reassign student in schedule
 
-### Attendance API (`/api/attendance`)
+### Attendance API (`/api/attendance`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/attendance`** - Get attendance records
-- **POST `/api/attendance/mark`** - Mark lesson attendance
-- **PUT `/api/attendance/:id`** - Update attendance status
-- **GET `/api/attendance/teacher/:id`** - Get teacher's attendance
-- **GET `/api/attendance/student/:id`** - Get student's attendance
-- **GET `/api/attendance/stats`** - Get attendance statistics
-- **GET `/api/attendance/week/:date`** - Get weekly attendance
-- **GET `/api/attendance/month/:year/:month`** - Get monthly attendance
-- **POST `/api/attendance/bulk-mark`** - Bulk mark attendance
-- **GET `/api/attendance/export`** - Export attendance data
+- **GET `/api/attendance`** ✅ - Get attendance records
+- **POST `/api/attendance/mark`** ✅ - Mark lesson attendance
+- **PUT `/api/attendance/:id`** ✅ - Update attendance status
+- **GET `/api/attendance/teacher/:id`** ✅ - Get teacher's attendance
+- **GET `/api/attendance/student/:id`** ✅ - Get student's attendance
+- **GET `/api/attendance/stats`** ✅ - Get attendance statistics
+- **GET `/api/attendance/week/:date`** ✅ - Get weekly attendance
+- **GET `/api/attendance/month/:year/:month`** ✅ - Get monthly attendance
+- **POST `/api/attendance/bulk-mark`** ✅ - Bulk mark attendance
+- **GET `/api/attendance/export`** ✅ - Export attendance data
 
-### Lesson Reports API (`/api/reports`)
+### Lesson Reports API (`/api/reports`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/reports`** - Get lesson reports
-- **GET `/api/reports/:id`** - Get specific report
-- **POST `/api/reports`** - Create lesson report
-- **PUT `/api/reports/:id`** - Update lesson report
-- **DELETE `/api/reports/:id`** - Delete lesson report
-- **GET `/api/reports/teacher/:id`** - Get teacher's reports
-- **GET `/api/reports/student/:id`** - Get student's reports
-- **GET `/api/reports/date/:date`** - Get reports by date
-- **GET `/api/reports/week/:date`** - Get weekly reports
-- **GET `/api/reports/month/:year/:month`** - Get monthly reports
-- **POST `/api/reports/bulk-create`** - Create multiple reports
-- **GET `/api/reports/export`** - Export reports data
+- **GET `/api/reports`** ✅ - Get lesson reports
+- **GET `/api/reports/:id`** ✅ - Get specific report
+- **POST `/api/reports`** ✅ - Create lesson report
+- **PUT `/api/reports/:id`** ✅ - Update lesson report
+- **DELETE `/api/reports/:id`** ✅ - Delete lesson report
+- **GET `/api/reports/teacher/:id`** ✅ - Get teacher's reports
+- **GET `/api/reports/student/:id`** ✅ - Get student's reports
+- **GET `/api/reports/date/:date`** ✅ - Get reports by date
+- **GET `/api/reports/week/:date`** ✅ - Get weekly reports
+- **GET `/api/reports/month/:year/:month`** ✅ - Get monthly reports
+- **POST `/api/reports/bulk-create`** ✅ - Create multiple reports
+- **GET `/api/reports/export`** ✅ - Export reports data
 
-### Passwords API (`/api/passwords`)
+### Passwords API (`/api/passwords`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/passwords/teacher/:id`** - Get teacher password (admin only)
-- **PUT `/api/passwords/teacher/:id`** - Change teacher password
-- **POST `/api/passwords/teacher/:id/reset`** - Reset teacher password
-- **POST `/api/passwords/bulk-reset`** - Bulk reset passwords
-- **GET `/api/passwords/history/:id`** - Get password change history
-- **POST `/api/passwords/validate`** - Validate password strength
-- **GET `/api/passwords/policy`** - Get password policy requirements
-- **POST `/api/passwords/check-current`** - Check current password
+- **GET `/api/passwords/teacher/:id`** ✅ - Get teacher password (admin only)
+- **PUT `/api/passwords/teacher/:id`** ✅ - Change teacher password
+- **POST `/api/passwords/teacher/:id/reset`** ✅ - Reset teacher password
+- **POST `/api/passwords/bulk-reset`** ✅ - Bulk reset passwords
+- **GET `/api/passwords/history/:id`** ✅ - Get password change history
+- **POST `/api/passwords/validate`** ✅ - Validate password strength
+- **GET `/api/passwords/policy`** ✅ - Get password policy requirements
+- **POST `/api/passwords/check-current`** ✅ - Check current password
 
-### Content Management API (`/api/content`)
+### Content Management API (`/api/content`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/content/mission`** - Get mission content
-- **PUT `/api/content/mission`** - Update mission content
-- **GET `/api/content/courses`** - Get all courses
-- **GET `/api/content/courses/:id`** - Get specific course
-- **POST `/api/content/courses`** - Create new course
-- **PUT `/api/content/courses/:id`** - Update course
-- **DELETE `/api/content/courses/:id`** - Delete course
-- **GET `/api/content/showcase`** - Get teacher showcase settings
-- **PUT `/api/content/showcase`** - Update showcase settings
-- **POST `/api/content/featured-teachers`** - Set featured teachers
-- **GET `/api/content/courses/active`** - Get active courses only
-- **PUT `/api/content/courses/:id/toggle`** - Toggle course active status
-- **POST `/api/content/courses/reorder`** - Reorder courses
-- **GET `/api/content/export`** - Export content data
+- **GET `/api/content/mission`** ✅ - Get mission content
+- **PUT `/api/content/mission`** ✅ - Update mission content
+- **GET `/api/content/courses`** ✅ - Get all courses
+- **GET `/api/content/courses/:id`** ✅ - Get specific course
+- **POST `/api/content/courses`** ✅ - Create new course
+- **PUT `/api/content/courses/:id`** ✅ - Update course
+- **DELETE `/api/content/courses/:id`** ✅ - Delete course
+- **GET `/api/content/showcase`** ✅ - Get teacher showcase settings
+- **PUT `/api/content/showcase`** ✅ - Update showcase settings
+- **POST `/api/content/featured-teachers`** ✅ - Set featured teachers
+- **GET `/api/content/courses/active`** ✅ - Get active courses only
+- **PUT `/api/content/courses/:id/toggle`** ✅ - Toggle course active status
+- **POST `/api/content/courses/reorder`** ✅ - Reorder courses
+- **GET `/api/content/export`** ✅ - Export content data
 
-### Cloudinary API (`/api/cloudinary`)
+### Cloudinary API (`/api/cloudinary`) ✅ **IMPLEMENTED**
 **Environment Variables**: `CLOUDINARY_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **POST `/api/cloudinary/upload`** - Upload image to Cloudinary
-- **DELETE `/api/cloudinary/delete`** - Delete image from Cloudinary
-- **POST `/api/cloudinary/upload-teacher-photo`** - Upload teacher photo
-- **POST `/api/cloudinary/upload-course-image`** - Upload course image
-- **POST `/api/cloudinary/upload-mission-banner`** - Upload mission banner
-- **GET `/api/cloudinary/transform`** - Get transformed image URL
-- **POST `/api/cloudinary/bulk-upload`** - Upload multiple images
-- **GET `/api/cloudinary/images`** - List uploaded images
+- **POST `/api/cloudinary/upload`** ✅ - Upload image to Cloudinary
+- **DELETE `/api/cloudinary/delete`** ✅ - Delete image from Cloudinary
+- **POST `/api/cloudinary/upload-teacher-photo`** ✅ - Upload teacher photo
+- **POST `/api/cloudinary/upload-course-image`** ✅ - Upload course image
+- **POST `/api/cloudinary/upload-mission-banner`** ✅ - Upload mission banner
+- **GET `/api/cloudinary/transform`** ✅ - Get transformed image URL
+- **POST `/api/cloudinary/bulk-upload`** ✅ - Upload multiple images
+- **GET `/api/cloudinary/images`** ✅ - List uploaded images
 
-### Analytics API (`/api/analytics`)
+### Analytics API (`/api/analytics`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/analytics/overview`** - Get system overview stats
-- **GET `/api/analytics/teachers`** - Get teacher analytics
-- **GET `/api/analytics/students`** - Get student analytics
-- **GET `/api/analytics/attendance`** - Get attendance analytics
-- **GET `/api/analytics/monthly/:teacherId`** - Get monthly teacher stats
-- **GET `/api/analytics/trends`** - Get performance trends
-- **POST `/api/analytics/export`** - Export analytics data
-- **GET `/api/analytics/dashboard`** - Get dashboard data
-- **GET `/api/analytics/performance`** - Get performance metrics
-- **GET `/api/analytics/reports`** - Get analytics reports
+- **GET `/api/analytics/overview`** ✅ - Get system overview stats
+- **GET `/api/analytics/teachers`** ✅ - Get teacher analytics
+- **GET `/api/analytics/students`** ✅ - Get student analytics
+- **GET `/api/analytics/attendance`** ✅ - Get attendance analytics
+- **GET `/api/analytics/monthly/:teacherId`** ✅ - Get monthly teacher stats
+- **GET `/api/analytics/trends`** ✅ - Get performance trends
+- **POST `/api/analytics/export`** ✅ - Export analytics data
+- **GET `/api/analytics/dashboard`** ✅ - Get dashboard data
+- **GET `/api/analytics/performance`** ✅ - Get performance metrics
+- **GET `/api/analytics/reports`** ✅ - Get analytics reports
 
-### Users API (`/api/users`)
+### Users API (`/api/users`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/users`** - Get all users (admin only)
-- **GET `/api/users/:id`** - Get specific user
-- **POST `/api/users`** - Create new user
-- **PUT `/api/users/:id`** - Update user information
-- **DELETE `/api/users/:id`** - Delete user
-- **POST `/api/users/:id/suspend`** - Suspend user account
-- **POST `/api/users/:id/unsuspend`** - Unsuspend user account
-- **GET `/api/users/activity/:id`** - Get user activity logs
-- **GET `/api/users/roles`** - Get available user roles
+- **GET `/api/users`** ✅ - Get all users (admin only)
+- **GET `/api/users/:id`** ✅ - Get specific user
+- **POST `/api/users`** ✅ - Create new user
+- **PUT `/api/users/:id`** ✅ - Update user information
+- **DELETE `/api/users/:id`** ✅ - Delete user
+- **POST `/api/users/:id/suspend`** ✅ - Suspend user account
+- **POST `/api/users/:id/unsuspend`** ✅ - Unsuspend user account
+- **GET `/api/users/activity/:id`** ✅ - Get user activity logs
+- **GET `/api/users/roles`** ✅ - Get available user roles
 
-### Dashboard API (`/api/dashboard`)
+### Dashboard API (`/api/dashboard`) ✅ **IMPLEMENTED**
 **Environment Variables**: `NEON_DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGIN`, `NODE_ENV`
 
-- **GET `/api/dashboard/admin`** - Get admin dashboard data
-- **GET `/api/dashboard/teacher`** - Get teacher dashboard data
-- **GET `/api/dashboard/stats`** - Get dashboard statistics
-- **GET `/api/dashboard/notifications`** - Get user notifications
-- **POST `/api/dashboard/notifications/read`** - Mark notification as read
-- **GET `/api/dashboard/upcoming`** - Get upcoming lessons
-- **GET `/api/dashboard/recent`** - Get recent activity
+- **GET `/api/dashboard/admin`** ✅ - Get admin dashboard data
+- **GET `/api/dashboard/teacher`** ✅ - Get teacher dashboard data
+- **GET `/api/dashboard/stats`** ✅ - Get dashboard statistics
+- **GET `/api/dashboard/notifications`** ✅ - Get user notifications
+- **POST `/api/dashboard/notifications/read`** ✅ - Mark notification as read
+- **GET `/api/dashboard/upcoming`** ✅ - Get upcoming lessons
+- **GET `/api/dashboard/recent`** ✅ - Get recent activity
 
 ## SQL Queries for All Functions
 

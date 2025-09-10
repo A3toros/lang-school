@@ -22,7 +22,9 @@
 [dev]
   command = "npm run dev"
   port = 3000
-  targetPort = 5174
+  targetPort = 5175
+  publish = "dist"
+  autoLaunch = false
 
 [[headers]]
   for = "/*"
@@ -31,6 +33,11 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
 
 [[headers]]
   for = "/api/*"

@@ -48,13 +48,21 @@ export const handler = async (event, context) => {
 
 // Get admin dashboard data
 async function getAdminDashboard(event, user) {
+  console.log('🔍 [DASHBOARD] getAdminDashboard called', { 
+    userId: user.userId, 
+    role: user.role, 
+    period: event.queryStringParameters?.period 
+  })
+  
   try {
     if (user.role !== 'admin') {
+      console.log('❌ [DASHBOARD] Access denied - not admin', { role: user.role })
       return errorResponse(403, 'Forbidden')
     }
 
     const { period = '30' } = event.queryStringParameters || {}
     const days = parseInt(period)
+    console.log('📊 [DASHBOARD] Fetching admin dashboard data', { period, days })
 
     // Get system overview
     const overviewQuery = `
@@ -110,19 +118,34 @@ async function getAdminDashboard(event, user) {
       LIMIT 10
     `
 
+    console.log('🔄 [DASHBOARD] Executing queries in parallel')
     const [overviewResult, teacherResult, activityResult] = await Promise.all([
       query(overviewQuery),
       query(teacherPerformanceQuery),
       query(recentActivityQuery)
     ])
 
-    return successResponse({
+    console.log('✅ [DASHBOARD] Queries completed successfully', {
+      overviewCount: overviewResult.rows.length,
+      teacherCount: teacherResult.rows.length,
+      activityCount: activityResult.rows.length
+    })
+
+    const response = {
       overview: overviewResult.rows[0],
       teacher_performance: teacherResult.rows,
       recent_activity: activityResult.rows
+    }
+
+    console.log('📈 [DASHBOARD] Admin dashboard data prepared', {
+      totalTeachers: response.overview?.total_teachers,
+      totalStudents: response.overview?.total_students,
+      todayLessons: response.overview?.today_lessons
     })
+
+    return successResponse(response)
   } catch (error) {
-    console.error('Get admin dashboard error:', error)
+    console.error('❌ [DASHBOARD] Get admin dashboard error:', error)
     return errorResponse(500, 'Failed to get admin dashboard')
   }
 }

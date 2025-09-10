@@ -1,4 +1,4 @@
-import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders } from './utils/database.js'
+import { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool } from './utils/database.js'
 
 export const handler = async (event, context) => {
   // Handle CORS preflight
@@ -58,9 +58,25 @@ export const handler = async (event, context) => {
 
 // Get lesson reports
 async function getReports(event, user) {
+  console.log('🔍 [REPORTS] getReports called', {
+    userId: user.userId,
+    role: user.role,
+    queryParams: event.queryStringParameters
+  })
+
   try {
     const { teacher_id, student_id, date_from, date_to, page, limit } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
+
+    console.log('📋 [REPORTS] Query parameters parsed', {
+      teacher_id,
+      student_id,
+      date_from,
+      date_to,
+      page,
+      limit,
+      offset
+    })
 
     let queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -102,18 +118,37 @@ async function getReports(event, user) {
     queryText += ` ORDER BY lr.lesson_date DESC, lr.created_at DESC LIMIT $${++paramCount} OFFSET $${++paramCount}`
     params.push(limit, offset)
 
+    console.log('🔍 [REPORTS] Executing query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Reports fetched successfully', {
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, student_name: r.student_name, teacher_name: r.teacher_name }))
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Get reports error:', error)
+    console.error('❌ [REPORTS] Get reports error:', error)
     return errorResponse(500, 'Failed to fetch reports')
   }
 }
 
 // Get specific report
 async function getReport(event, user) {
+  console.log('🔍 [REPORTS] getReport called', {
+    userId: user.userId,
+    role: user.role,
+    reportId: event.path.split('/')[3]
+  })
+
   try {
     const reportId = parseInt(event.path.split('/')[3])
+
+    console.log('📋 [REPORTS] Fetching report', { reportId })
 
     const queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -126,46 +161,94 @@ async function getReport(event, user) {
     const result = await query(queryText, [reportId])
     
     if (result.rows.length === 0) {
+      console.log('❌ [REPORTS] Report not found', { reportId })
       return errorResponse(404, 'Report not found')
     }
 
     const report = result.rows[0]
 
+    console.log('🔍 [REPORTS] Report found, checking permissions', {
+      reportId,
+      teacherId: report.teacher_id,
+      userTeacherId: user.teacherId,
+      userRole: user.role
+    })
+
     // Check permissions
     if (user.role === 'teacher' && report.teacher_id !== user.teacherId) {
+      console.log('❌ [REPORTS] Access forbidden - not teacher\'s report', {
+        reportTeacherId: report.teacher_id,
+        userTeacherId: user.teacherId
+      })
       return errorResponse(403, 'Forbidden')
     }
 
+    console.log('✅ [REPORTS] Report fetched successfully', {
+      reportId,
+      studentName: report.student_name,
+      teacherName: report.teacher_name
+    })
+
     return successResponse({ report })
   } catch (error) {
-    console.error('Get report error:', error)
+    console.error('❌ [REPORTS] Get report error:', error)
     return errorResponse(500, 'Failed to fetch report')
   }
 }
 
 // Create lesson report
 async function createReport(event, user) {
+  console.log('🔍 [REPORTS] createReport called', {
+    userId: user.userId,
+    role: user.role,
+    body: JSON.parse(event.body)
+  })
+
   try {
     const { student_id, lesson_date, time_slot, comment } = JSON.parse(event.body)
 
+    console.log('📋 [REPORTS] Report data validation', {
+      student_id,
+      lesson_date,
+      time_slot,
+      hasComment: !!comment
+    })
+
     if (!student_id || !lesson_date || !time_slot) {
+      console.log('❌ [REPORTS] Missing required fields', {
+        student_id: !!student_id,
+        lesson_date: !!lesson_date,
+        time_slot: !!time_slot
+      })
       return errorResponse(400, 'student_id, lesson_date, and time_slot are required')
     }
 
     // Check permissions - teachers can only create reports for their own students
     if (user.role === 'teacher') {
+      console.log('🔍 [REPORTS] Checking teacher permissions', {
+        studentId: student_id,
+        userTeacherId: user.teacherId
+      })
+
       const studentCheck = await query(
         'SELECT teacher_id FROM students WHERE id = $1',
         [student_id]
       )
       
       if (studentCheck.rows.length === 0) {
+        console.log('❌ [REPORTS] Student not found', { studentId: student_id })
         return errorResponse(404, 'Student not found')
       }
       
       if (studentCheck.rows[0].teacher_id !== user.teacherId) {
+        console.log('❌ [REPORTS] Access forbidden - not teachers student', {
+          studentTeacherId: studentCheck.rows[0].teacher_id,
+          userTeacherId: user.teacherId
+        })
         return errorResponse(403, 'Forbidden')
       }
+
+      console.log('✅ [REPORTS] Teacher permissions verified')
     }
 
     const queryText = `
@@ -178,19 +261,42 @@ async function createReport(event, user) {
       (JSON.parse(event.body).teacher_id || user.teacherId) : 
       user.teacherId
 
+    console.log('🔍 [REPORTS] Creating report', {
+      teacherId,
+      studentId: student_id,
+      lessonDate: lesson_date,
+      timeSlot: time_slot
+    })
+
     const result = await query(queryText, [teacherId, student_id, lesson_date, time_slot, comment || null])
+    
+    console.log('✅ [REPORTS] Report created successfully', {
+      reportId: result.rows[0].id,
+      teacherId,
+      studentId: student_id
+    })
+
     return successResponse({ report: result.rows[0] }, 201)
   } catch (error) {
-    console.error('Create report error:', error)
+    console.error('❌ [REPORTS] Create report error:', error)
     return errorResponse(500, 'Failed to create report')
   }
 }
 
 // Update lesson report
 async function updateReport(event, user) {
+  console.log('🔍 [REPORTS] updateReport called', {
+    userId: user.userId,
+    role: user.role,
+    reportId: event.path.split('/')[3],
+    body: JSON.parse(event.body)
+  })
+
   try {
     const reportId = parseInt(event.path.split('/')[3])
     const { comment } = JSON.parse(event.body)
+
+    console.log('📋 [REPORTS] Updating report', { reportId, comment })
 
     // Check permissions
     const reportCheck = await query(
@@ -199,13 +305,24 @@ async function updateReport(event, user) {
     )
 
     if (reportCheck.rows.length === 0) {
+      console.log('❌ [REPORTS] Report not found', { reportId })
       return errorResponse(404, 'Report not found')
     }
 
     const report = reportCheck.rows[0]
 
+    console.log('🔍 [REPORTS] Checking update permissions', {
+      reportTeacherId: report.teacher_id,
+      userTeacherId: user.teacherId,
+      userRole: user.role
+    })
+
     // Teachers can only update their own reports
     if (user.role === 'teacher' && report.teacher_id !== user.teacherId) {
+      console.log('❌ [REPORTS] Update forbidden - not teachers report', {
+        reportTeacherId: report.teacher_id,
+        userTeacherId: user.teacherId
+      })
       return errorResponse(403, 'Forbidden')
     }
 
@@ -217,17 +334,31 @@ async function updateReport(event, user) {
     `
     
     const result = await query(queryText, [comment, reportId])
+    
+    console.log('✅ [REPORTS] Report updated successfully', {
+      reportId,
+      comment
+    })
+
     return successResponse({ report: result.rows[0] })
   } catch (error) {
-    console.error('Update report error:', error)
+    console.error('❌ [REPORTS] Update report error:', error)
     return errorResponse(500, 'Failed to update report')
   }
 }
 
 // Delete lesson report
 async function deleteReport(event, user) {
+  console.log('🔍 [REPORTS] deleteReport called', {
+    userId: user.userId,
+    role: user.role,
+    reportId: event.path.split('/')[3]
+  })
+
   try {
     const reportId = parseInt(event.path.split('/')[3])
+
+    console.log('📋 [REPORTS] Deleting report', { reportId })
 
     // Check permissions
     const reportCheck = await query(
@@ -236,33 +367,67 @@ async function deleteReport(event, user) {
     )
 
     if (reportCheck.rows.length === 0) {
+      console.log('❌ [REPORTS] Report not found', { reportId })
       return errorResponse(404, 'Report not found')
     }
 
     const report = reportCheck.rows[0]
 
+    console.log('🔍 [REPORTS] Checking delete permissions', {
+      reportTeacherId: report.teacher_id,
+      userTeacherId: user.teacherId,
+      userRole: user.role
+    })
+
     // Teachers can only delete their own reports
     if (user.role === 'teacher' && report.teacher_id !== user.teacherId) {
+      console.log('❌ [REPORTS] Delete forbidden - not teachers report', {
+        reportTeacherId: report.teacher_id,
+        userTeacherId: user.teacherId
+      })
       return errorResponse(403, 'Forbidden')
     }
 
     await query('DELETE FROM lesson_reports WHERE id = $1', [reportId])
+    
+    console.log('✅ [REPORTS] Report deleted successfully', { reportId })
+
     return successResponse({ message: 'Report deleted successfully' })
   } catch (error) {
-    console.error('Delete report error:', error)
+    console.error('❌ [REPORTS] Delete report error:', error)
     return errorResponse(500, 'Failed to delete report')
   }
 }
 
 // Get teacher's reports
 async function getTeacherReports(event, user) {
+  console.log('🔍 [REPORTS] getTeacherReports called', {
+    userId: user.userId,
+    role: user.role,
+    teacherId: event.path.split('/')[4],
+    queryParams: event.queryStringParameters
+  })
+
   try {
     const teacherId = parseInt(event.path.split('/')[4])
     const { date_from, date_to, page, limit } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
+    console.log('📋 [REPORTS] Teacher reports parameters', {
+      teacherId,
+      date_from,
+      date_to,
+      page,
+      limit,
+      offset
+    })
+
     // Check permissions
     if (user.role === 'teacher' && user.teacherId !== teacherId) {
+      console.log('❌ [REPORTS] Access forbidden - not own teacher reports', {
+        requestedTeacherId: teacherId,
+        userTeacherId: user.teacherId
+      })
       return errorResponse(403, 'Forbidden')
     }
 
@@ -288,35 +453,75 @@ async function getTeacherReports(event, user) {
     queryText += ` ORDER BY lr.lesson_date DESC, lr.created_at DESC LIMIT $${++paramCount} OFFSET $${++paramCount}`
     params.push(limit, offset)
 
+    console.log('🔍 [REPORTS] Executing teacher reports query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Teacher reports fetched successfully', {
+      teacherId,
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, student_name: r.student_name, lesson_date: r.lesson_date }))
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Get teacher reports error:', error)
+    console.error('❌ [REPORTS] Get teacher reports error:', error)
     return errorResponse(500, 'Failed to fetch teacher reports')
   }
 }
 
 // Get student's reports
 async function getStudentReports(event, user) {
+  console.log('🔍 [REPORTS] getStudentReports called', {
+    userId: user.userId,
+    role: user.role,
+    studentId: event.path.split('/')[4],
+    queryParams: event.queryStringParameters
+  })
+
   try {
     const studentId = parseInt(event.path.split('/')[4])
     const { date_from, date_to, page, limit } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
+    console.log('📋 [REPORTS] Student reports parameters', {
+      studentId,
+      date_from,
+      date_to,
+      page,
+      limit,
+      offset
+    })
+
     // Check permissions
     if (user.role === 'teacher') {
+      console.log('🔍 [REPORTS] Checking teacher permissions for student', {
+        studentId,
+        userTeacherId: user.teacherId
+      })
+
       const studentCheck = await query(
         'SELECT teacher_id FROM students WHERE id = $1',
         [studentId]
       )
       
       if (studentCheck.rows.length === 0) {
+        console.log('❌ [REPORTS] Student not found', { studentId })
         return errorResponse(404, 'Student not found')
       }
       
       if (studentCheck.rows[0].teacher_id !== user.teacherId) {
+        console.log('❌ [REPORTS] Access forbidden - not teachers student', {
+          studentTeacherId: studentCheck.rows[0].teacher_id,
+          userTeacherId: user.teacherId
+        })
         return errorResponse(403, 'Forbidden')
       }
+
+      console.log('✅ [REPORTS] Teacher permissions verified')
     }
 
     let queryText = `
@@ -341,18 +546,38 @@ async function getStudentReports(event, user) {
     queryText += ` ORDER BY lr.lesson_date DESC, lr.created_at DESC LIMIT $${++paramCount} OFFSET $${++paramCount}`
     params.push(limit, offset)
 
+    console.log('🔍 [REPORTS] Executing student reports query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Student reports fetched successfully', {
+      studentId,
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, teacher_name: r.teacher_name, lesson_date: r.lesson_date }))
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Get student reports error:', error)
+    console.error('❌ [REPORTS] Get student reports error:', error)
     return errorResponse(500, 'Failed to fetch student reports')
   }
 }
 
 // Get reports by date
 async function getReportsByDate(event, user) {
+  console.log('🔍 [REPORTS] getReportsByDate called', {
+    userId: user.userId,
+    role: user.role,
+    date: event.path.split('/')[4]
+  })
+
   try {
     const date = event.path.split('/')[4]
+
+    console.log('📋 [REPORTS] Fetching reports by date', { date })
 
     let queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -367,24 +592,49 @@ async function getReportsByDate(event, user) {
     if (user.role === 'teacher') {
       queryText += ` AND lr.teacher_id = $2`
       params.push(user.teacherId)
+      console.log('🔍 [REPORTS] Filtering by teacher', { teacherId: user.teacherId })
     }
 
     queryText += ` ORDER BY lr.time_slot`
 
+    console.log('🔍 [REPORTS] Executing date reports query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Reports by date fetched successfully', {
+      date,
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, student_name: r.student_name, teacher_name: r.teacher_name, time_slot: r.time_slot }))
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Get reports by date error:', error)
+    console.error('❌ [REPORTS] Get reports by date error:', error)
     return errorResponse(500, 'Failed to fetch reports by date')
   }
 }
 
 // Get weekly reports
 async function getWeeklyReports(event, user) {
+  console.log('🔍 [REPORTS] getWeeklyReports called', {
+    userId: user.userId,
+    role: user.role,
+    date: event.path.split('/')[4]
+  })
+
   try {
     const date = event.path.split('/')[4]
     const weekStart = getWeekStart(date)
     const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    console.log('📋 [REPORTS] Weekly reports parameters', {
+      date,
+      weekStart,
+      weekEnd
+    })
 
     let queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -399,27 +649,50 @@ async function getWeeklyReports(event, user) {
     if (user.role === 'teacher') {
       queryText += ` AND lr.teacher_id = $3`
       params.push(user.teacherId)
+      console.log('🔍 [REPORTS] Filtering by teacher', { teacherId: user.teacherId })
     }
 
     queryText += ` ORDER BY lr.lesson_date, lr.time_slot`
 
+    console.log('🔍 [REPORTS] Executing weekly reports query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Weekly reports fetched successfully', {
+      weekStart,
+      weekEnd,
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, student_name: r.student_name, teacher_name: r.teacher_name, lesson_date: r.lesson_date }))
+    })
+
     return successResponse({ 
       reports: result.rows,
       week_start: weekStart,
       week_end: weekEnd
     })
   } catch (error) {
-    console.error('Get weekly reports error:', error)
+    console.error('❌ [REPORTS] Get weekly reports error:', error)
     return errorResponse(500, 'Failed to fetch weekly reports')
   }
 }
 
 // Get monthly reports
 async function getMonthlyReports(event, user) {
+  console.log('🔍 [REPORTS] getMonthlyReports called', {
+    userId: user.userId,
+    role: user.role,
+    year: event.path.split('/')[4],
+    month: event.path.split('/')[5]
+  })
+
   try {
     const year = parseInt(event.path.split('/')[4])
     const month = parseInt(event.path.split('/')[5])
+
+    console.log('📋 [REPORTS] Monthly reports parameters', { year, month })
 
     let queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -436,24 +709,50 @@ async function getMonthlyReports(event, user) {
     if (user.role === 'teacher') {
       queryText += ` AND lr.teacher_id = $3`
       params.push(user.teacherId)
+      console.log('🔍 [REPORTS] Filtering by teacher', { teacherId: user.teacherId })
     }
 
     queryText += ` ORDER BY lr.lesson_date, lr.time_slot`
 
+    console.log('🔍 [REPORTS] Executing monthly reports query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Monthly reports fetched successfully', {
+      year,
+      month,
+      count: result.rows.length,
+      reports: result.rows.map(r => ({ id: r.id, student_name: r.student_name, teacher_name: r.teacher_name, lesson_date: r.lesson_date }))
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Get monthly reports error:', error)
+    console.error('❌ [REPORTS] Get monthly reports error:', error)
     return errorResponse(500, 'Failed to fetch monthly reports')
   }
 }
 
 // Bulk create reports
 async function bulkCreateReports(event, user) {
+  console.log('🔍 [REPORTS] bulkCreateReports called', {
+    userId: user.userId,
+    role: user.role,
+    reportsCount: JSON.parse(event.body).reports?.length
+  })
+
   try {
     const { reports } = JSON.parse(event.body)
 
+    console.log('📋 [REPORTS] Bulk create parameters', {
+      reportsCount: reports?.length,
+      isArray: Array.isArray(reports)
+    })
+
     if (!Array.isArray(reports)) {
+      console.log('❌ [REPORTS] Invalid reports format', { type: typeof reports })
       return errorResponse(400, 'reports must be an array')
     }
 
@@ -461,9 +760,20 @@ async function bulkCreateReports(event, user) {
     
     try {
       await client.query('BEGIN')
+      console.log('🔍 [REPORTS] Transaction started')
+
+      let createdCount = 0
+      let skippedCount = 0
 
       for (const report of reports) {
         const { student_id, lesson_date, time_slot, comment } = report
+
+        console.log('🔍 [REPORTS] Processing report', {
+          student_id,
+          lesson_date,
+          time_slot,
+          hasComment: !!comment
+        })
 
         // Check permissions for each report
         if (user.role === 'teacher') {
@@ -472,39 +782,75 @@ async function bulkCreateReports(event, user) {
             [student_id]
           )
           
-          if (studentCheck.rows.length === 0) continue
+          if (studentCheck.rows.length === 0) {
+            console.log('⚠️ [REPORTS] Skipping report - student not found', { student_id })
+            skippedCount++
+            continue
+          }
           
-          if (studentCheck.rows[0].teacher_id !== user.teacherId) continue
+          if (studentCheck.rows[0].teacher_id !== user.teacherId) {
+            console.log('⚠️ [REPORTS] Skipping report - not teacher\'s student', {
+              student_id,
+              studentTeacherId: studentCheck.rows[0].teacher_id,
+              userTeacherId: user.teacherId
+            })
+            skippedCount++
+            continue
+          }
         }
 
         await client.query(
           'INSERT INTO lesson_reports (teacher_id, student_id, lesson_date, time_slot, comment) VALUES ($1, $2, $3, $4, $5)',
           [user.role === 'admin' ? report.teacher_id : user.teacherId, student_id, lesson_date, time_slot, comment || null]
         )
+        
+        createdCount++
+        console.log('✅ [REPORTS] Report created', { student_id, lesson_date })
       }
 
       await client.query('COMMIT')
-      return successResponse({ message: 'Reports created successfully' })
+      
+      console.log('✅ [REPORTS] Bulk create completed successfully', {
+        createdCount,
+        skippedCount,
+        totalProcessed: reports.length
+      })
+
+      return successResponse({ 
+        message: 'Reports created successfully',
+        created: createdCount,
+        skipped: skippedCount
+      })
     } catch (error) {
       await client.query('ROLLBACK')
+      console.log('❌ [REPORTS] Transaction rolled back due to error')
       throw error
     } finally {
       client.release()
     }
   } catch (error) {
-    console.error('Bulk create reports error:', error)
+    console.error('❌ [REPORTS] Bulk create reports error:', error)
     return errorResponse(500, 'Failed to create reports')
   }
 }
 
 // Export reports data
 async function exportReports(event, user) {
+  console.log('🔍 [REPORTS] exportReports called', {
+    userId: user.userId,
+    role: user.role,
+    queryParams: event.queryStringParameters
+  })
+
   try {
     if (user.role !== 'admin') {
+      console.log('❌ [REPORTS] Export forbidden - not admin', { role: user.role })
       return errorResponse(403, 'Forbidden')
     }
 
     const { date_from, date_to } = event.queryStringParameters || {}
+
+    console.log('📋 [REPORTS] Export parameters', { date_from, date_to })
 
     let queryText = `
       SELECT lr.*, s.name as student_name, t.name as teacher_name
@@ -527,10 +873,28 @@ async function exportReports(event, user) {
 
     queryText += ` ORDER BY lr.lesson_date DESC, lr.created_at DESC`
 
+    console.log('🔍 [REPORTS] Executing export query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [REPORTS] Export completed successfully', {
+      count: result.rows.length
+    })
+
     return successResponse({ reports: result.rows })
   } catch (error) {
-    console.error('Export reports error:', error)
+    console.error('❌ [REPORTS] Export reports error:', error)
     return errorResponse(500, 'Failed to export reports data')
   }
+}
+
+// Helper function to get week start date
+function getWeekStart(date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
+  return new Date(d.setDate(diff)).toISOString().split('T')[0]
 }

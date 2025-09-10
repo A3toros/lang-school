@@ -1,13 +1,8 @@
 import { motion } from 'framer-motion'
 
 const MissionSection = ({ mission }) => {
-  const defaultMission = {
-    title: 'Our Mission',
-    content: 'At LangSchool, we believe that language learning should be engaging, practical, and accessible to everyone. Our mission is to break down language barriers and connect people across cultures through innovative teaching methods, experienced instructors, and a supportive learning environment. We are committed to helping our students achieve their language goals while fostering a deeper understanding and appreciation of different cultures around the world.',
-    banner_image: null
-  }
-
-  const missionData = mission || defaultMission
+  // Use the passed mission data directly (now comes from static content)
+  const missionData = mission
 
   return (
     <motion.div

@@ -1,30 +1,14 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
-const TeacherShowcase = ({ teachers = [] }) => {
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (teachers.length > 0) {
-      setLoading(false)
-    }
-  }, [teachers])
-
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    )
-  }
+const TeacherShowcase = ({ teachers = [], title = "Meet Our Teachers", subtitle = "Our experienced and passionate teachers are here to help you achieve your language learning goals" }) => {
 
   return (
     <div className="text-center mb-16">
       <h2 className="text-3xl font-bold text-neutral-800 mb-4">
-        Meet Our Teachers
+        {title}
       </h2>
       <p className="text-neutral-600 mb-8 max-w-2xl mx-auto">
-        Our experienced and passionate teachers are here to help you achieve your language learning goals
+        {subtitle}
       </p>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">

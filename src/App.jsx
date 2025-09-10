@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import AdminPage from './pages/AdminPage'
 import TeacherPage from './pages/TeacherPage'
 import ProtectedRoute from './components/common/ProtectedRoute'
+import DebugPanel from './components/common/DebugPanel'
 import './App.css'
 
 function App() {
@@ -31,6 +32,9 @@ function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          
+          {/* Debug Panel - Only in development */}
+          {process.env.NODE_ENV === 'development' && <DebugPanel />}
         </div>
       </Router>
     </AuthProvider>

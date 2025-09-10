@@ -54,9 +54,16 @@ export const handler = async (event, context) => {
 
 // Get system overview statistics
 async function getSystemOverview(event, user) {
+  console.log('🔍 [ANALYTICS] getSystemOverview called', { 
+    userId: user.userId, 
+    role: user.role, 
+    period: event.queryStringParameters?.period 
+  })
+  
   try {
     const { period = '30' } = event.queryStringParameters || {}
     const days = parseInt(period)
+    console.log('📊 [ANALYTICS] Fetching system overview', { period, days })
 
     const overviewQuery = `
       SELECT 
@@ -72,12 +79,20 @@ async function getSystemOverview(event, user) {
          AND attendance_date >= CURRENT_DATE - INTERVAL '${days} days') as absent_lessons
     `
 
+    console.log('🔄 [ANALYTICS] Executing overview query')
     const result = await query(overviewQuery)
     const overview = result.rows[0]
 
+    console.log('✅ [ANALYTICS] System overview fetched successfully', {
+      totalTeachers: overview?.total_teachers,
+      totalStudents: overview?.total_students,
+      todayLessons: overview?.today_lessons,
+      completedLessons: overview?.completed_lessons
+    })
+
     return successResponse(overview)
   } catch (error) {
-    console.error('Get system overview error:', error)
+    console.error('❌ [ANALYTICS] Get system overview error:', error)
     return errorResponse(500, 'Failed to get system overview')
   }
 }

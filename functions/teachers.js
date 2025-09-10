@@ -14,12 +14,17 @@ export const handler = async (event, context) => {
   const method = event.httpMethod
 
   try {
-    // Verify authentication for all routes except public ones
+    // Check if this is a public route (no authentication required)
+    const isPublicRoute = path.match(/^\/api\/teachers\/random\/\d+$/) && method === 'GET'
+    
     let user
-    try {
-      user = verifyToken(event)
-    } catch (error) {
-      return errorResponse(401, 'Unauthorized')
+    if (!isPublicRoute) {
+      // Verify authentication for all routes except public ones
+      try {
+        user = verifyToken(event)
+      } catch (error) {
+        return errorResponse(401, 'Unauthorized')
+      }
     }
 
     // Route to appropriate handler
@@ -49,6 +54,14 @@ export const handler = async (event, context) => {
       return await searchTeachers(event, user)
     } else if (path === '/api/teachers/inactive' && method === 'GET') {
       return await getInactiveTeachers(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/attendance$/) && method === 'GET') {
+      return await getTeacherAttendance(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/lessons$/) && method === 'GET') {
+      return await getTeacherLessons(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/upload-photo$/) && method === 'POST') {
+      return await uploadTeacherPhoto(event, user)
+    } else if (path === '/api/teachers/bulk-update' && method === 'POST') {
+      return await bulkUpdateTeachers(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -60,10 +73,17 @@ export const handler = async (event, context) => {
 
 // Get all teachers (admin) or current teacher
 async function getTeachers(event, user) {
+  console.log('🔍 [TEACHERS] getTeachers called', {
+    userId: user.userId,
+    role: user.role,
+    teacherId: user.teacherId
+  })
+
   try {
     let queryText, params
 
     if (user.role === 'admin') {
+      console.log('📋 [TEACHERS] Admin requesting all teachers')
       // Admin can see all teachers
       queryText = `
         SELECT t.*, u.username, u.is_active as user_active,
@@ -77,6 +97,7 @@ async function getTeachers(event, user) {
       `
       params = []
     } else if (user.role === 'teacher') {
+      console.log('📋 [TEACHERS] Teacher requesting own data', { teacherId: user.teacherId })
       // Teacher can only see themselves
       queryText = `
         SELECT t.*, u.username, u.is_active as user_active,
@@ -89,13 +110,25 @@ async function getTeachers(event, user) {
       `
       params = [user.teacherId]
     } else {
+      console.log('❌ [TEACHERS] Forbidden - invalid role', { role: user.role })
       return errorResponse(403, 'Forbidden')
     }
 
+    console.log('🔍 [TEACHERS] Executing query', {
+      queryText: queryText.substring(0, 200) + '...',
+      paramsCount: params.length
+    })
+
     const result = await query(queryText, params)
+    
+    console.log('✅ [TEACHERS] Query executed successfully', {
+      rowCount: result.rowCount,
+      teachers: result.rows.map(t => ({ id: t.id, name: t.name, student_count: t.student_count }))
+    })
+
     return successResponse({ teachers: result.rows })
   } catch (error) {
-    console.error('Get teachers error:', error)
+    console.error('❌ [TEACHERS] Get teachers error:', error)
     return errorResponse(500, 'Failed to fetch teachers')
   }
 }
@@ -454,5 +487,166 @@ async function getInactiveTeachers(event, user) {
   } catch (error) {
     console.error('Get inactive teachers error:', error)
     return errorResponse(500, 'Failed to fetch inactive teachers')
+  }
+}
+
+// Get teacher's attendance records
+async function getTeacherAttendance(event, user) {
+  try {
+    const teacherId = parseInt(event.path.split('/')[3])
+    const { start_date, end_date } = event.queryStringParameters || {}
+    
+    // Check permissions
+    if (user.role === 'teacher' && user.teacherId !== teacherId) {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    let queryText = `
+      SELECT ss.*, s.name as student_name, s.id as student_id
+      FROM student_schedules ss
+      JOIN students s ON ss.student_id = s.id
+      WHERE ss.teacher_id = $1 AND s.is_active = true
+    `
+    let params = [teacherId]
+
+    if (start_date) {
+      queryText += ` AND ss.attendance_date >= $${params.length + 1}`
+      params.push(start_date)
+    }
+
+    if (end_date) {
+      queryText += ` AND ss.attendance_date <= $${params.length + 1}`
+      params.push(end_date)
+    }
+
+    queryText += ` ORDER BY ss.attendance_date DESC, ss.day_of_week, ss.time_slot`
+    
+    const result = await query(queryText, params)
+    return successResponse({ attendance: result.rows })
+  } catch (error) {
+    console.error('Get teacher attendance error:', error)
+    return errorResponse(500, 'Failed to fetch attendance records')
+  }
+}
+
+// Get teacher's lesson history
+async function getTeacherLessons(event, user) {
+  try {
+    const teacherId = parseInt(event.path.split('/')[3])
+    const { start_date, end_date, page, limit } = event.queryStringParameters || {}
+    const { offset } = getPaginationParams({ page, limit })
+    
+    // Check permissions
+    if (user.role === 'teacher' && user.teacherId !== teacherId) {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    let queryText = `
+      SELECT lr.*, s.name as student_name, s.id as student_id
+      FROM lesson_reports lr
+      JOIN students s ON lr.student_id = s.id
+      WHERE lr.teacher_id = $1 AND s.is_active = true
+    `
+    let params = [teacherId]
+
+    if (start_date) {
+      queryText += ` AND lr.lesson_date >= $${params.length + 1}`
+      params.push(start_date)
+    }
+
+    if (end_date) {
+      queryText += ` AND lr.lesson_date <= $${params.length + 1}`
+      params.push(end_date)
+    }
+
+    queryText += ` ORDER BY lr.lesson_date DESC, lr.time_slot LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+    params.push(limit, offset)
+    
+    const result = await query(queryText, params)
+    return successResponse({ lessons: result.rows })
+  } catch (error) {
+    console.error('Get teacher lessons error:', error)
+    return errorResponse(500, 'Failed to fetch lesson history')
+  }
+}
+
+// Upload teacher photo
+async function uploadTeacherPhoto(event, user) {
+  try {
+    const teacherId = parseInt(event.path.split('/')[3])
+    
+    // Check permissions
+    if (user.role === 'teacher' && user.teacherId !== teacherId) {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const { photo_url } = JSON.parse(event.body)
+
+    if (!photo_url) {
+      return errorResponse(400, 'Photo URL is required')
+    }
+
+    const queryText = `
+      UPDATE teachers 
+      SET photo_url = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND is_active = true
+      RETURNING *
+    `
+    
+    const result = await query(queryText, [photo_url, teacherId])
+    
+    if (result.rows.length === 0) {
+      return errorResponse(404, 'Teacher not found')
+    }
+
+    return successResponse({ teacher: result.rows[0] })
+  } catch (error) {
+    console.error('Upload teacher photo error:', error)
+    return errorResponse(500, 'Failed to upload photo')
+  }
+}
+
+// Bulk update teachers
+async function bulkUpdateTeachers(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const { teacherIds, updates } = JSON.parse(event.body)
+
+    if (!teacherIds || !Array.isArray(teacherIds) || teacherIds.length === 0) {
+      return errorResponse(400, 'Teacher IDs are required')
+    }
+
+    if (!updates || Object.keys(updates).length === 0) {
+      return errorResponse(400, 'Updates are required')
+    }
+
+    const allowedFields = ['name', 'email', 'description', 'is_active']
+    const updateFields = Object.keys(updates).filter(field => allowedFields.includes(field))
+    
+    if (updateFields.length === 0) {
+      return errorResponse(400, 'No valid fields to update')
+    }
+
+    const setClause = updateFields.map((field, index) => `${field} = $${index + 2}`).join(', ')
+    const queryText = `
+      UPDATE teachers 
+      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ANY($1) AND is_active = true
+      RETURNING *
+    `
+
+    const params = [teacherIds, ...updateFields.map(field => updates[field])]
+    const result = await query(queryText, params)
+
+    return successResponse({ 
+      message: `Updated ${result.rows.length} teachers`,
+      teachers: result.rows 
+    })
+  } catch (error) {
+    console.error('Bulk update teachers error:', error)
+    return errorResponse(500, 'Failed to bulk update teachers')
   }
 }

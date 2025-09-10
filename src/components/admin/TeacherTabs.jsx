@@ -11,11 +11,37 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
     const fetchTeachers = async () => {
       try {
         setLoading(true)
-        const response = await apiService.getTeachers()
-        setTeachers(response.teachers || [])
+        setError('')
+        console.log('🔍 [TEACHER_TABS] Fetching teachers...')
+        
+        // Add timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout')), 10000)
+        )
+        
+        const response = await Promise.race([
+          apiService.getTeachers(),
+          timeoutPromise
+        ])
+        
+        console.log('📋 [TEACHER_TABS] Teachers response:', response)
+        
+        if (response.success) {
+          const teachers = response.teachers || []
+          setTeachers(teachers)
+          console.log('✅ [TEACHER_TABS] Teachers loaded successfully:', teachers.length)
+          
+          // If no teachers found, show a helpful message
+          if (teachers.length === 0) {
+            console.log('⚠️ [TEACHER_TABS] No teachers found in database')
+          }
+        } else {
+          throw new Error(response.error || 'Failed to load teachers')
+        }
       } catch (err) {
-        setError('Failed to load teachers')
-        console.error('Error fetching teachers:', err)
+        console.error('❌ [TEACHER_TABS] Error fetching teachers:', err)
+        setError(`Failed to load teachers: ${err.message}`)
+        setTeachers([])
       } finally {
         setLoading(false)
       }
@@ -34,8 +60,17 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <p className="text-error text-sm">{error}</p>
+      <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4">
+        <h3 className="text-lg font-semibold text-neutral-800 mb-4">Teachers</h3>
+        <div className="text-center py-8">
+          <div className="text-error text-sm mb-2">{error}</div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="text-primary-600 hover:text-primary-700 text-sm underline"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
@@ -77,9 +112,23 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
         ))}
       </div>
 
-      {teachers.length === 0 && (
+      {teachers.length === 0 && !loading && (
         <div className="text-center py-8 text-neutral-500">
-          <p>No teachers found</p>
+          <div className="mb-4">
+            <svg className="w-16 h-16 mx-auto text-neutral-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+            </svg>
+          </div>
+          <p className="text-lg font-medium mb-2">No teachers found</p>
+          <p className="text-sm text-neutral-400 mb-4">
+            There are no teachers in the database yet.
+          </p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="text-primary-600 hover:text-primary-700 text-sm underline"
+          >
+            Refresh
+          </button>
         </div>
       )}
     </div>

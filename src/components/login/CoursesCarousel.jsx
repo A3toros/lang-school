@@ -1,16 +1,10 @@
-import { useState, useEffect } from 'react'
+
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const CoursesCarousel = ({ courses = [] }) => {
+const CoursesCarousel = ({ courses = [], title = "Our Courses", subtitle = "Choose from our wide range of language courses designed to meet your learning goals" }) => {
   const [currentCourse, setCurrentCourse] = useState(0)
-  const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
-
-  useEffect(() => {
-    if (courses.length > 0) {
-      setLoading(false)
-    }
-  }, [courses])
 
   const nextCourse = () => {
     setCurrentCourse((prev) => (prev + 1) % courses.length)
@@ -20,18 +14,10 @@ const CoursesCarousel = ({ courses = [] }) => {
     setCurrentCourse((prev) => (prev - 1 + courses.length) % courses.length)
   }
 
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    )
-  }
-
   if (!courses || courses.length === 0) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-3xl font-bold text-neutral-800 mb-4">Our Courses</h2>
+        <h2 className="text-3xl font-bold text-neutral-800 mb-4">{title}</h2>
         <p className="text-neutral-600">No courses available at the moment.</p>
       </div>
     )
@@ -42,10 +28,10 @@ const CoursesCarousel = ({ courses = [] }) => {
   return (
     <div className="text-center">
       <h2 className="text-3xl font-bold text-neutral-800 mb-4">
-        Our Courses
+        {title}
       </h2>
       <p className="text-neutral-600 mb-8 max-w-2xl mx-auto">
-        Choose from our wide range of language courses designed to meet your learning goals
+        {subtitle}
       </p>
 
       <div className="max-w-4xl mx-auto">

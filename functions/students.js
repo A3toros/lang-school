@@ -53,6 +53,10 @@ export const handler = async (event, context) => {
       return await getInactiveStudents(event, user)
     } else if (path === '/api/students/export' && method === 'GET') {
       return await exportStudents(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/teachers$/) && method === 'GET') {
+      return await getStudentTeachers(event, user)
+    } else if (path === '/api/students/bulk-update' && method === 'POST') {
+      return await bulkUpdateStudents(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -597,5 +601,87 @@ async function exportStudents(event, user) {
   } catch (error) {
     console.error('Export students error:', error)
     return errorResponse(500, 'Failed to export students')
+  }
+}
+
+// Get student's teacher history
+async function getStudentTeachers(event, user) {
+  try {
+    const studentId = parseInt(event.path.split('/')[3])
+
+    // Check permissions
+    if (user.role === 'teacher') {
+      const studentCheck = await query(
+        'SELECT teacher_id FROM students WHERE id = $1',
+        [studentId]
+      )
+      
+      if (studentCheck.rows.length === 0) {
+        return errorResponse(404, 'Student not found')
+      }
+      
+      if (studentCheck.rows[0].teacher_id !== user.teacherId) {
+        return errorResponse(403, 'Forbidden')
+      }
+    }
+
+    const queryText = `
+      SELECT DISTINCT t.*, s.teacher_id as current_teacher
+      FROM teachers t
+      JOIN students s ON t.id = s.teacher_id
+      WHERE s.id = $1
+      ORDER BY t.name
+    `
+    
+    const result = await query(queryText, [studentId])
+    return successResponse({ teachers: result.rows })
+  } catch (error) {
+    console.error('Get student teachers error:', error)
+    return errorResponse(500, 'Failed to fetch teachers')
+  }
+}
+
+// Bulk update students
+async function bulkUpdateStudents(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const { studentIds, updates } = JSON.parse(event.body)
+
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return errorResponse(400, 'Student IDs are required')
+    }
+
+    if (!updates || Object.keys(updates).length === 0) {
+      return errorResponse(400, 'Updates are required')
+    }
+
+    const allowedFields = ['name', 'teacher_id', 'lessons_per_week', 'is_active']
+    const updateFields = Object.keys(updates).filter(field => allowedFields.includes(field))
+    
+    if (updateFields.length === 0) {
+      return errorResponse(400, 'No valid fields to update')
+    }
+
+    const setClause = updateFields.map((field, index) => `${field} = $${index + 2}`).join(', ')
+    const queryText = `
+      UPDATE students 
+      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ANY($1) AND is_active = true
+      RETURNING *
+    `
+
+    const params = [studentIds, ...updateFields.map(field => updates[field])]
+    const result = await query(queryText, params)
+
+    return successResponse({ 
+      message: `Updated ${result.rows.length} students`,
+      students: result.rows 
+    })
+  } catch (error) {
+    console.error('Bulk update students error:', error)
+    return errorResponse(500, 'Failed to bulk update students')
   }
 }

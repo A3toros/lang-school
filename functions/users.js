@@ -52,13 +52,21 @@ export const handler = async (event, context) => {
 
 // Get all users (admin only)
 async function getAllUsers(event, user) {
+  console.log('🔍 [USERS] getAllUsers called', { 
+    userId: user.userId, 
+    role: user.role, 
+    queryParams: event.queryStringParameters 
+  })
+  
   try {
     if (user.role !== 'admin') {
+      console.log('❌ [USERS] Access denied - not admin', { role: user.role })
       return errorResponse(403, 'Forbidden')
     }
 
     const { page = 1, limit = 50, role, is_active } = event.queryStringParameters || {}
     const offset = (parseInt(page) - 1) * parseInt(limit)
+    console.log('📊 [USERS] Fetching users with filters', { page, limit, role, is_active, offset })
 
     let queryStr = `
       SELECT 
@@ -119,10 +127,18 @@ async function getAllUsers(event, user) {
       countParams.push(is_active === 'true')
     }
 
+    console.log('🔄 [USERS] Executing count query')
     const countResult = await query(countQuery, countParams)
     const total = parseInt(countResult.rows[0].total)
 
-    return successResponse({
+    console.log('✅ [USERS] Users fetched successfully', {
+      userCount: result.rows.length,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    })
+
+    const response = {
       users: result.rows,
       pagination: {
         page: parseInt(page),
@@ -130,9 +146,16 @@ async function getAllUsers(event, user) {
         total,
         pages: Math.ceil(total / parseInt(limit))
       }
+    }
+
+    console.log('📋 [USERS] Users response prepared', {
+      users: result.rows.map(u => ({ id: u.id, username: u.username, role: u.role })),
+      pagination: response.pagination
     })
+
+    return successResponse(response)
   } catch (error) {
-    console.error('Get all users error:', error)
+    console.error('❌ [USERS] Get all users error:', error)
     return errorResponse(500, 'Failed to get users')
   }
 }
