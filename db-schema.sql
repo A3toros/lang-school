@@ -1104,3 +1104,18 @@ GROUP BY day_of_week
 ORDER BY day_of_week;
 
 COMMIT;
+
+CREATE OR REPLACE FUNCTION get_week_start(input_date DATE)
+RETURNS DATE AS $$
+BEGIN
+  -- If input is Sunday (day 0), return Monday of the SAME week
+  -- Otherwise, return Monday of the week containing the date
+  IF EXTRACT(DOW FROM input_date) = 0 THEN
+    -- Sunday: return Monday of the same week (6 days ago)
+    RETURN input_date - INTERVAL '6 days';
+  ELSE
+    -- Other days: return Monday of the week containing the date
+    RETURN DATE_TRUNC('week', input_date);
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
