@@ -93,10 +93,10 @@ async function getTeachers(event, user) {
       // Admin can see all teachers with status filtering
       queryText = `
         SELECT t.*, u.username, u.is_active as user_active,
-               COUNT(s.id) as student_count
+               COUNT(DISTINCT st.student_id) as student_count
         FROM teachers t
         LEFT JOIN users u ON t.id = u.teacher_id
-        LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+        LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
         WHERE 1=1
       `
       
@@ -105,8 +105,10 @@ async function getTeachers(event, user) {
         queryText += ` AND t.is_active = true`
       } else if (status === 'inactive') {
         queryText += ` AND t.is_active = false`
+      } else {
+        // Default: show only active teachers
+        queryText += ` AND t.is_active = true`
       }
-      // If no status specified, show all teachers
       
       queryText += ` GROUP BY t.id, u.username, u.is_active ORDER BY t.name`
       params = []
@@ -115,10 +117,10 @@ async function getTeachers(event, user) {
       // Teacher can only see themselves
       queryText = `
         SELECT t.*, u.username, u.is_active as user_active,
-               COUNT(s.id) as student_count
+               COUNT(DISTINCT st.student_id) as student_count
         FROM teachers t
         LEFT JOIN users u ON t.id = u.teacher_id
-        LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+        LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
         WHERE t.id = $1 AND t.is_active = true
         GROUP BY t.id, u.username, u.is_active
       `
@@ -159,10 +161,10 @@ async function getTeacher(event, user) {
 
     const queryText = `
       SELECT t.*, u.username, u.is_active as user_active,
-             COUNT(s.id) as student_count
+             COUNT(DISTINCT st.student_id) as student_count
       FROM teachers t
       LEFT JOIN users u ON t.id = u.teacher_id
-      LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+      LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
       WHERE t.id = $1
       GROUP BY t.id, u.username, u.is_active
     `
@@ -298,6 +300,12 @@ async function deactivateTeacher(event, user) {
       // 2. Set students to unassigned (preserve student data, just remove teacher assignment)
       await client.query(
         'UPDATE students SET teacher_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE teacher_id = $1',
+        [teacherId]
+      )
+      
+      // 2b. Deactivate all teacher assignments in student_teachers
+      await client.query(
+        'UPDATE student_teachers SET is_active = false WHERE teacher_id = $1',
         [teacherId]
       )
       
@@ -585,16 +593,16 @@ async function getTeacherStats(event, user) {
 
     const queryText = `
       SELECT 
-        COUNT(DISTINCT s.id) as total_students,
-        COUNT(ss.id) as total_lessons,
+        COUNT(DISTINCT st.student_id) as total_students,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate
       FROM teachers t
-      LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+      LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
       LEFT JOIN student_schedules ss ON t.id = ss.teacher_id
       WHERE t.id = $1
     `
@@ -664,10 +672,10 @@ async function searchTeachers(event, user) {
 
     let queryText = `
       SELECT t.*, u.username, u.is_active as user_active,
-             COUNT(s.id) as student_count
+             COUNT(DISTINCT st.student_id) as student_count
       FROM teachers t
       LEFT JOIN users u ON t.id = u.teacher_id
-      LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+      LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
       WHERE t.is_active = true
     `
     let params = []

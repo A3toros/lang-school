@@ -59,6 +59,12 @@ exports.handler = async (event, context) => {
       return await exportStudents(event, user)
     } else if (path.match(/^\/api\/students\/\d+\/teachers$/) && method === 'GET') {
       return await getStudentTeachers(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/teachers$/) && method === 'POST') {
+      return await addStudentTeacher(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/teachers\/\d+$/) && method === 'DELETE') {
+      return await removeStudentTeacher(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/teachers\/\d+\/primary$/) && method === 'PUT') {
+      return await setPrimaryTeacher(event, user)
     } else if (path === '/api/students/bulk-update' && method === 'POST') {
       return await bulkUpdateStudents(event, user)
     } else {
@@ -73,7 +79,7 @@ exports.handler = async (event, context) => {
 // Get all students with filtering/pagination
 async function getStudents(event, user) {
   try {
-    const { name, date_from, date_to, lessons_min, lessons_max, sort_by, sort_order, page, limit, status } = event.queryStringParameters || {}
+    const { name, date_from, date_to, lessons_min, lessons_max, sort_by, sort_order, page, limit, status, teacher_id, primary_teacher_id } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
     // Build lesson count query based on date range
@@ -89,9 +95,9 @@ async function getStudents(event, user) {
     // If no dates provided, show all time data (default behavior)
 
     let queryText = `
-      SELECT s.*, t.name as teacher_name, ${lessonCountQuery}
+      SELECT s.*, pt.name as teacher_name, ${lessonCountQuery}
       FROM students s
-      LEFT JOIN teachers t ON s.teacher_id = t.id
+      LEFT JOIN teachers pt ON s.primary_teacher_id = pt.id
       LEFT JOIN student_lessons sl ON s.id = sl.student_id
       WHERE 1=1
     `
@@ -120,7 +126,27 @@ async function getStudents(event, user) {
       params.push(date_to)
     }
 
-    queryText += ` GROUP BY s.id, t.name`
+    // Add teacher_id filter (backward compatibility)
+    if (teacher_id !== undefined) {
+      if (teacher_id === null || teacher_id === 'null') {
+        queryText += ` AND s.teacher_id IS NULL`
+      } else {
+        queryText += ` AND s.teacher_id = $${++paramCount}`
+        params.push(teacher_id)
+      }
+    }
+
+    // Add primary_teacher_id filter support
+    if (primary_teacher_id !== undefined) {
+      if (primary_teacher_id === null || primary_teacher_id === 'null') {
+        queryText += ` AND s.primary_teacher_id IS NULL`
+      } else {
+        queryText += ` AND s.primary_teacher_id = $${++paramCount}`
+        params.push(primary_teacher_id)
+      }
+    }
+
+    queryText += ` GROUP BY s.id, pt.name`
 
     if (lessons_min || lessons_max) {
       queryText += ` HAVING COUNT(sl.id)`
@@ -406,12 +432,18 @@ async function deactivateStudent(event, user) {
       
       // 1. Set student to unassigned and deactivated
       const updateResult = await client.query(
-        'UPDATE students SET teacher_id = NULL, is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        'UPDATE students SET teacher_id = NULL, primary_teacher_id = NULL, teacher_count = 0, is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [studentId]
+      )
+      
+      // 2. Deactivate all teacher assignments in student_teachers
+      await client.query(
+        'UPDATE student_teachers SET is_active = false WHERE student_id = $1',
         [studentId]
       )
       console.log('🚨 [DEACTIVATE] Student update result:', { studentId, rowsAffected: updateResult.rowCount })
       
-      // 2. DELETE future schedules (not just set teacher_id = NULL)
+      // 3. DELETE future schedules (not just set teacher_id = NULL)
       const currentDate = new Date().toISOString().split('T')[0]
       await client.query(
         `DELETE FROM student_schedules 
@@ -419,13 +451,13 @@ async function deactivateStudent(event, user) {
         [studentId, currentDate]
       )
       
-      // 3. DEACTIVATE schedule templates (prevent regeneration)
+      // 4. DEACTIVATE schedule templates (prevent regeneration)
       await client.query(
         'UPDATE schedule_templates SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE student_id = $1',
         [studentId]
       )
       
-      // 4. Log deactivation in schedule history
+      // 5. Log deactivation in schedule history
       try {
         await client.query(
           `INSERT INTO schedule_history (action, old_teacher_id, new_teacher_id, changed_by, notes)
@@ -731,7 +763,7 @@ async function getStudentAttendance(event, user) {
       SELECT ss.*, t.name as teacher_name
       FROM student_schedules ss
       JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.student_id = $1 AND ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.student_id = $1 AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
     `
     let params = [studentId]
 
@@ -781,7 +813,7 @@ async function getStudentProgress(event, user) {
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate,
         s.added_date,
         s.lessons_per_week
@@ -841,9 +873,9 @@ async function getInactiveStudents(event, user) {
     }
 
     const queryText = `
-      SELECT s.*, t.name as teacher_name
+      SELECT s.*, pt.name as teacher_name
       FROM students s
-      LEFT JOIN teachers t ON s.teacher_id = t.id
+      LEFT JOIN teachers pt ON s.primary_teacher_id = pt.id
       WHERE s.is_active = false
       ORDER BY s.name
     `
@@ -964,5 +996,263 @@ async function bulkUpdateStudents(event, user) {
   } catch (error) {
     console.error('Bulk update students error:', error)
     return errorResponse(500, 'Failed to bulk update students')
+  }
+}
+
+// =====================================================
+// TEACHER MANAGEMENT FUNCTIONS
+// =====================================================
+
+// Get student's assigned teachers
+async function getStudentTeachers(event, user) {
+  try {
+    const studentId = parseInt(event.path.split('/')[3])
+    
+    // Check permissions
+    if (user.role === 'teacher') {
+      const hasAccess = await hasStudentAccess(user.teacherId, studentId)
+      if (!hasAccess) {
+        return errorResponse(403, 'Forbidden')
+      }
+    }
+
+    const queryText = `
+      SELECT t.*, st.is_primary, st.assigned_date, st.assigned_by
+      FROM teachers t
+      JOIN student_teachers st ON t.id = st.teacher_id
+      WHERE st.student_id = $1 AND st.is_active = true
+      ORDER BY st.is_primary DESC, t.name
+    `
+    
+    const result = await query(queryText, [studentId])
+    return successResponse({ teachers: result.rows })
+  } catch (error) {
+    console.error('Get student teachers error:', error)
+    return errorResponse(500, 'Failed to fetch teachers')
+  }
+}
+
+// Add teacher to student
+async function addStudentTeacher(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const studentId = parseInt(event.path.split('/')[3])
+    const { teacher_id, is_primary } = JSON.parse(event.body)
+
+    // Verify teacher exists
+    const teacherCheck = await query(
+      'SELECT id FROM teachers WHERE id = $1 AND is_active = true',
+      [teacher_id]
+    )
+
+    console.log('🔍 [ADD_TEACHER] Teacher check:', {
+      teacher_id,
+      found: teacherCheck.rows.length > 0,
+      teacher: teacherCheck.rows[0]
+    })
+
+    if (teacherCheck.rows.length === 0) {
+      return errorResponse(400, 'Invalid teacher_id')
+    }
+
+    // Check if already assigned (including inactive assignments)
+    const existingCheck = await query(
+      'SELECT id, is_active FROM student_teachers WHERE student_id = $1 AND teacher_id = $2',
+      [studentId, teacher_id]
+    )
+
+    if (existingCheck.rows.length > 0) {
+      const assignment = existingCheck.rows[0]
+      if (assignment.is_active) {
+        return errorResponse(400, 'Teacher already assigned to this student')
+      } else {
+        // Reactivate the existing assignment
+        await query(
+          'UPDATE student_teachers SET is_active = true, assigned_date = CURRENT_DATE, assigned_by = $1 WHERE id = $2',
+          [user.userId, assignment.id]
+        )
+        // Update student teacher count
+        await query(
+          'UPDATE students SET teacher_count = teacher_count + 1 WHERE id = $1',
+          [studentId]
+        )
+        return successResponse({ message: 'Teacher assignment reactivated' })
+      }
+    }
+
+    // Check if this is the first teacher for this student (BEFORE any modifications)
+    const existingTeachers = await query(
+      'SELECT COUNT(*) as count FROM student_teachers WHERE student_id = $1 AND is_active = true',
+      [studentId]
+    )
+    const isFirstTeacher = parseInt(existingTeachers.rows[0].count) === 0
+
+    // If setting as primary, unset current primary
+    if (is_primary) {
+      await query(
+        'UPDATE student_teachers SET is_primary = false WHERE student_id = $1 AND is_primary = true',
+        [studentId]
+      )
+    }
+
+    // Add new teacher assignment (first teacher is automatically primary)
+    await query(
+      'INSERT INTO student_teachers (student_id, teacher_id, is_primary, assigned_by) VALUES ($1, $2, $3, $4)',
+      [studentId, teacher_id, isFirstTeacher, user.userId]
+    )
+
+    // Update student's primary teacher if this is the first teacher
+    if (isFirstTeacher) {
+      await query(
+        'UPDATE students SET primary_teacher_id = $1, teacher_count = teacher_count + 1 WHERE id = $2',
+        [teacher_id, studentId]
+      )
+    } else {
+      await query(
+        'UPDATE students SET teacher_count = teacher_count + 1 WHERE id = $1',
+        [studentId]
+      )
+    }
+
+    return successResponse({ message: 'Teacher added successfully' })
+  } catch (error) {
+    console.error('Add student teacher error:', error)
+    return errorResponse(500, 'Failed to add teacher')
+  }
+}
+
+// Remove teacher from student
+async function removeStudentTeacher(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const studentId = parseInt(event.path.split('/')[3])
+    const teacherId = parseInt(event.path.split('/')[5])
+
+    // Check if teacher is assigned
+    const assignmentCheck = await query(
+      'SELECT is_primary FROM student_teachers WHERE student_id = $1 AND teacher_id = $2 AND is_active = true',
+      [studentId, teacherId]
+    )
+
+    if (assignmentCheck.rows.length === 0) {
+      return errorResponse(404, 'Teacher not assigned to this student')
+    }
+
+    const isPrimary = assignmentCheck.rows[0].is_primary
+
+    // Deactivate assignment
+    await query(
+      'UPDATE student_teachers SET is_active = false WHERE student_id = $1 AND teacher_id = $2',
+      [studentId, teacherId]
+    )
+
+    // If removing primary teacher, set new primary or clear
+    if (isPrimary) {
+      // First, unset any existing primary teacher
+      await query(
+        'UPDATE student_teachers SET is_primary = false WHERE student_id = $1 AND is_primary = true',
+        [studentId]
+      )
+
+      // Check for remaining active teachers AFTER deactivating the current one
+      const remainingTeachers = await query(
+        'SELECT teacher_id FROM student_teachers WHERE student_id = $1 AND is_active = true LIMIT 1',
+        [studentId]
+      )
+
+      if (remainingTeachers.rows.length > 0) {
+        // Set new primary (first remaining teacher)
+        await query(
+          'UPDATE student_teachers SET is_primary = true WHERE student_id = $1 AND teacher_id = $2',
+          [studentId, remainingTeachers.rows[0].teacher_id]
+        )
+        await query(
+          'UPDATE students SET primary_teacher_id = $1 WHERE id = $2',
+          [remainingTeachers.rows[0].teacher_id, studentId]
+        )
+      } else {
+        // No more teachers, clear primary
+        await query(
+          'UPDATE students SET primary_teacher_id = NULL WHERE id = $1',
+          [studentId]
+        )
+      }
+    }
+
+    // Update teacher count
+    await query(
+      'UPDATE students SET teacher_count = teacher_count - 1 WHERE id = $1',
+      [studentId]
+    )
+
+    return successResponse({ message: 'Teacher removed successfully' })
+  } catch (error) {
+    console.error('Remove student teacher error:', error)
+    return errorResponse(500, 'Failed to remove teacher')
+  }
+}
+
+// Set primary teacher
+async function setPrimaryTeacher(event, user) {
+  try {
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const studentId = parseInt(event.path.split('/')[3])
+    const teacherId = parseInt(event.path.split('/')[5])
+
+    // Verify teacher is assigned to student
+    const assignmentCheck = await query(
+      'SELECT id FROM student_teachers WHERE student_id = $1 AND teacher_id = $2 AND is_active = true',
+      [studentId, teacherId]
+    )
+
+    if (assignmentCheck.rows.length === 0) {
+      return errorResponse(404, 'Teacher not assigned to this student')
+    }
+
+    // Unset current primary
+    await query(
+      'UPDATE student_teachers SET is_primary = false WHERE student_id = $1 AND is_primary = true',
+      [studentId]
+    )
+
+    // Set new primary
+    await query(
+      'UPDATE student_teachers SET is_primary = true WHERE student_id = $1 AND teacher_id = $2',
+      [studentId, teacherId]
+    )
+
+    // Update student's primary teacher
+    await query(
+      'UPDATE students SET primary_teacher_id = $1 WHERE id = $2',
+      [teacherId, studentId]
+    )
+
+    return successResponse({ message: 'Primary teacher updated successfully' })
+  } catch (error) {
+    console.error('Set primary teacher error:', error)
+    return errorResponse(500, 'Failed to update primary teacher')
+  }
+}
+
+// Helper function to check if teacher has access to student
+async function hasStudentAccess(teacherId, studentId) {
+  try {
+    const result = await query(
+      'SELECT id FROM student_teachers WHERE student_id = $1 AND teacher_id = $2 AND is_active = true',
+      [studentId, teacherId]
+    )
+    return result.rows.length > 0
+  } catch (error) {
+    console.error('Error checking student access:', error)
+    return false
   }
 }

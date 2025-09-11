@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool  } = require('./utils/database.js')
 
 exports.handler = async (event, context) => {
   // Handle CORS preflight
@@ -178,8 +178,8 @@ async function markAttendance(event, user) {
          FROM student_schedules 
          WHERE student_id = $1 
            AND attendance_status = 'absent' 
-           AND attendance_date >= $2 - INTERVAL '7 days'
-           AND attendance_date <= $2
+           AND attendance_date >= $2::date - INTERVAL '7 days'
+           AND attendance_date <= $2::date
          ORDER BY attendance_date DESC`,
         [schedule.student_id, attendanceDate]
       )
@@ -283,7 +283,7 @@ async function getTeacherAttendance(event, user) {
       SELECT ss.*, s.name as student_name
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
-      WHERE ss.teacher_id = $1 AND ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.teacher_id = $1 AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
         AND s.is_active = true
     `
     let params = [teacherId]
@@ -330,7 +330,7 @@ async function getStudentAttendance(event, user) {
       SELECT ss.*, t.name as teacher_name
       FROM student_schedules ss
       JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.student_id = $1 AND ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.student_id = $1 AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
     `
     let params = [studentId]
 
@@ -360,10 +360,10 @@ async function getAttendanceStats(event, user) {
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'scheduled' THEN 1 END) as scheduled_lessons,
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN 1 END), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN 1 END), 0)) * 100, 2
         ) as attendance_rate
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
@@ -414,7 +414,7 @@ async function getWeeklyAttendance(event, user) {
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
       JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.week_start_date = $1 AND ss.attendance_status IN ('completed', 'absent')
+      WHERE ss.week_start_date = $1 AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
         AND s.is_active = true AND t.is_active = true
     `
     let params = [weekStart]
@@ -456,7 +456,7 @@ async function getMonthlyAttendance(event, user) {
       JOIN teachers t ON ss.teacher_id = t.id
       WHERE EXTRACT(YEAR FROM ss.attendance_date) = $1 
         AND EXTRACT(MONTH FROM ss.attendance_date) = $2
-        AND ss.attendance_status IN ('completed', 'absent')
+        AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
         AND s.is_active = true AND t.is_active = true
     `
     let params = [year, month]

@@ -153,7 +153,10 @@ const StudentModal = ({
 
         <div>
           <label htmlFor="lessons_per_week" className="block text-sm font-medium text-neutral-700 mb-1">
-            Lessons per Week
+            Lessons per Week (Auto-calculated)
+            <span className="text-xs text-gray-500 ml-1" title="Automatically calculated based on actual lessons scheduled this week">
+              ℹ️
+            </span>
           </label>
           <input
             type="number"
@@ -161,11 +164,11 @@ const StudentModal = ({
             name="lessons_per_week"
             value={formData.lessons_per_week}
             onChange={handleChange}
-            min="1"
+            min="0"
             max="7"
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            disabled
+            className="w-full px-3 py-2 border border-neutral-300 rounded-lg bg-gray-100 cursor-not-allowed"
             required
-            disabled={loading}
           />
         </div>
 

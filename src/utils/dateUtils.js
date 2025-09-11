@@ -43,6 +43,14 @@ export const getCurrentWeekStart = () => {
   return monday.toISOString().split('T')[0]
 }
 
+export const getWeekStart = (date) => {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
+  const monday = new Date(d.setDate(diff))
+  return monday.toISOString().split('T')[0]
+}
+
 export const getWeekEnd = (weekStart) => {
   const start = new Date(weekStart)
   const end = new Date(start)
@@ -105,13 +113,11 @@ export const subtractDays = (date, days) => {
 
 export const getTimeSlots = () => {
   return [
-    '6:30-7:00', '7:00-7:30', '7:30-8:00', '8:00-8:30', '8:30-9:00',
-    '9:00-9:30', '9:30-10:00', '10:00-10:30', '10:30-11:00', '11:00-11:30',
-    '11:30-12:00', '12:00-12:30', '12:30-13:00', '13:00-13:30', '13:30-14:00',
-    '14:00-14:30', '14:30-15:00', '15:00-15:30', '15:30-16:00', '16:00-16:30',
-    '16:30-17:00', '17:00-17:30', '17:30-18:00', '18:00-18:30', '18:30-19:00',
-    '19:00-19:30', '19:30-20:00', '20:00-20:30', '20:30-21:00', '21:00-21:30',
-    '21:30-22:00'
+    '8:00-8:30', '8:30-9:00', '9:00-9:30', '9:30-10:00', '10:00-10:30', '10:30-11:00',
+    '11:00-11:30', '11:30-12:00', '12:00-12:30', '12:30-13:00', '13:00-13:30', '13:30-14:00',
+    '14:00-14:30', '14:30-15:00', '15:00-15:30', '15:30-16:00', '16:00-16:30', '16:30-17:00',
+    '17:00-17:30', '17:30-18:00', '18:00-18:30', '18:30-19:00', '19:00-19:30', '19:30-20:00',
+    '20:00-20:30', '20:30-21:00', '21:00-21:30'
   ]
 }
 
@@ -302,6 +308,7 @@ export default {
   formatDate,
   formatTime,
   getCurrentWeekStart,
+  getWeekStart,
   getWeekEnd,
   getWeekDates,
   getDayName,

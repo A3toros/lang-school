@@ -61,6 +61,7 @@ class ApiService {
         
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
         const error = new Error(errorData.error || `HTTP ${response.status}`)
+        error.status = response.status
         apiDebugger.logError(method, url, error)
         throw error
       }
@@ -146,6 +147,7 @@ class ApiService {
         
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
         const error = new Error(errorData.error || `HTTP ${response.status}`)
+        error.status = response.status
         apiDebugger.logError(method, url, error)
         throw error
       }
@@ -1277,6 +1279,97 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('CONTENT', 'Error updating showcase settings', { error: error.message })
+      throw error
+    }
+  }
+
+  // =====================================================
+  // TEACHER MANAGEMENT METHODS
+  // =====================================================
+
+  async getStudentTeachers(studentId) {
+    try {
+      apiDebugger.info('TEACHER_MGMT', 'Fetching student teachers', { studentId })
+      
+      const result = await this.makeRequest(`/students/${studentId}/teachers`, {
+        method: 'GET'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('TEACHER_MGMT', 'Student teachers fetched successfully', { 
+          count: result.teachers?.length || 0 
+        })
+      } else {
+        apiDebugger.warning('TEACHER_MGMT', 'Failed to fetch student teachers', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHER_MGMT', 'Error fetching student teachers', { error: error.message })
+      throw error
+    }
+  }
+
+  async addStudentTeacher(studentId, teacherData) {
+    try {
+      apiDebugger.info('TEACHER_MGMT', 'Adding teacher to student', { studentId, teacherData })
+      
+      const result = await this.makeRequest(`/students/${studentId}/teachers`, {
+        method: 'POST',
+        body: JSON.stringify(teacherData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('TEACHER_MGMT', 'Teacher added successfully')
+      } else {
+        apiDebugger.warning('TEACHER_MGMT', 'Failed to add teacher', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHER_MGMT', 'Error adding teacher', { error: error.message })
+      throw error
+    }
+  }
+
+  async removeStudentTeacher(studentId, teacherId) {
+    try {
+      apiDebugger.info('TEACHER_MGMT', 'Removing teacher from student', { studentId, teacherId })
+      
+      const result = await this.makeRequest(`/students/${studentId}/teachers/${teacherId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('TEACHER_MGMT', 'Teacher removed successfully')
+      } else {
+        apiDebugger.warning('TEACHER_MGMT', 'Failed to remove teacher', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHER_MGMT', 'Error removing teacher', { error: error.message })
+      throw error
+    }
+  }
+
+  async setPrimaryTeacher(studentId, teacherId) {
+    try {
+      apiDebugger.info('TEACHER_MGMT', 'Setting primary teacher', { studentId, teacherId })
+      
+      const result = await this.makeRequest(`/students/${studentId}/teachers/${teacherId}/primary`, {
+        method: 'PUT'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('TEACHER_MGMT', 'Primary teacher updated successfully')
+      } else {
+        apiDebugger.warning('TEACHER_MGMT', 'Failed to update primary teacher', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHER_MGMT', 'Error setting primary teacher', { error: error.message })
       throw error
     }
   }

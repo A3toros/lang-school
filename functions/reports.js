@@ -102,12 +102,12 @@ async function getReports(event, user) {
     }
 
     if (date_from) {
-      queryText += ` AND lr.lesson_date >= $${++paramCount}`
+      queryText += ` AND lr.lesson_date::date >= $${++paramCount}::date`
       params.push(date_from)
     }
 
     if (date_to) {
-      queryText += ` AND lr.lesson_date <= $${++paramCount}`
+      queryText += ` AND lr.lesson_date::date <= $${++paramCount}::date`
       params.push(date_to)
     }
 
@@ -233,7 +233,7 @@ async function createReport(event, user) {
       })
 
       const studentCheck = await query(
-        'SELECT teacher_id FROM students WHERE id = $1',
+        'SELECT s.id FROM students s WHERE s.id = $1',
         [student_id]
       )
       
@@ -241,21 +241,30 @@ async function createReport(event, user) {
         console.log('❌ [REPORTS] Student not found', { studentId: student_id })
         return errorResponse(404, 'Student not found')
       }
+
+      // Check if teacher is assigned to this student (multi-teacher system)
+      const teacherStudentCheck = await query(
+        'SELECT 1 FROM student_teachers WHERE student_id = $1 AND teacher_id = $2',
+        [student_id, user.teacherId]
+      )
       
-      if (studentCheck.rows[0].teacher_id !== user.teacherId) {
-        console.log('❌ [REPORTS] Access forbidden - not teachers student', {
-          studentTeacherId: studentCheck.rows[0].teacher_id,
+      if (teacherStudentCheck.rows.length === 0) {
+        console.log('❌ [REPORTS] Access forbidden - teacher not assigned to student', {
+          studentId: student_id,
           userTeacherId: user.teacherId
         })
-        return errorResponse(403, 'Forbidden')
+        return errorResponse(403, 'Forbidden - You are not assigned to this student')
       }
 
       console.log('✅ [REPORTS] Teacher permissions verified')
     }
 
+    // Calculate week start date for consistent key generation
+    const weekStartDate = getWeekStart(lesson_date)
+    
     const queryText = `
-      INSERT INTO lesson_reports (teacher_id, student_id, lesson_date, time_slot, comment)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO lesson_reports (teacher_id, student_id, lesson_date, time_slot, comment, week_start_date)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `
     
@@ -267,10 +276,11 @@ async function createReport(event, user) {
       teacherId,
       studentId: student_id,
       lessonDate: lesson_date,
-      timeSlot: time_slot
+      timeSlot: time_slot,
+      weekStartDate: weekStartDate
     })
 
-    const result = await query(queryText, [teacherId, student_id, lesson_date, time_slot, comment || null])
+    const result = await query(queryText, [teacherId, student_id, lesson_date, time_slot, comment || null, weekStartDate])
     
     console.log('✅ [REPORTS] Report created successfully', {
       reportId: result.rows[0].id,
@@ -643,13 +653,13 @@ async function getWeeklyReports(event, user) {
       FROM lesson_reports lr
       JOIN students s ON lr.student_id = s.id
       JOIN teachers t ON lr.teacher_id = t.id
-      WHERE lr.lesson_date BETWEEN $1 AND $2 AND s.is_active = true AND t.is_active = true
+      WHERE lr.week_start_date = $1 AND s.is_active = true AND t.is_active = true
     `
-    let params = [weekStart, weekEnd]
+    let params = [weekStart]
 
     // Filter by teacher if user is a teacher
     if (user.role === 'teacher') {
-      queryText += ` AND lr.teacher_id = $3`
+      queryText += ` AND lr.teacher_id = $2`
       params.push(user.teacherId)
       console.log('🔍 [REPORTS] Filtering by teacher', { teacherId: user.teacherId })
     }

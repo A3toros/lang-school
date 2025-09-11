@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import SuccessNotification from '../common/SuccessNotification'
+import TeacherManagementModal from './TeacherManagementModal'
 
 const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
   const [students, setStudents] = useState([])
@@ -28,6 +29,13 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     key: 'added_date',
     direction: 'desc'
   })
+  
+  // Teacher management modal state
+  const [showTeacherModal, setShowTeacherModal] = useState(false)
+  const [modalStudent, setModalStudent] = useState(null)
+  const [assignedTeachers, setAssignedTeachers] = useState([])
+  const [availableTeachers, setAvailableTeachers] = useState([])
+  const [teacherModalLoading, setTeacherModalLoading] = useState(false)
   const [showStudentDetails, setShowStudentDetails] = useState(false)
   const [selectedStudentStats, setSelectedStudentStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
@@ -46,6 +54,13 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     }
     fetchTeachers()
   }, [pagination.page, filters, sortConfig, activeTab])
+
+  // Initial load - fetch both active and inactive students to show correct counts
+  useEffect(() => {
+    fetchStudents()
+    fetchInactiveStudents()
+    fetchTeachers()
+  }, [])
 
   const fetchStudents = async () => {
     try {
@@ -84,6 +99,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       }
     } catch (error) {
       console.error('Error fetching inactive students:', error)
+      if (error.status === 401) {
+        // Token expired, redirect to login
+        window.location.href = '/login'
+      }
     } finally {
       setLoading(false)
     }
@@ -97,6 +116,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       }
     } catch (error) {
       console.error('Error fetching teachers:', error)
+      if (error.status === 401) {
+        // Token expired, redirect to login
+        window.location.href = '/login'
+      }
     }
   }
 
@@ -159,9 +182,11 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
           is_active: false
         })
         
-        // Remove from active list and add to inactive list
-        setStudents(prev => prev.filter(s => s.id !== student.id))
-        setInactiveStudents(prev => [...prev, { ...student, is_active: false, teacher_name: null }])
+        // Refresh both active and inactive students to get accurate counts
+        await Promise.all([
+          fetchStudents(),
+          fetchInactiveStudents()
+        ])
         
         showSuccessNotification('Success!', 'Student deactivated successfully', 'success')
         setShowStatusConfirm(false)
@@ -188,20 +213,21 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         is_active: true
       })
       
-      // Remove from inactive list and add to active list
-      setInactiveStudents(prev => prev.filter(s => s.id !== student.id))
-      const teacher = teachers.find(t => t.id === parseInt(teacherId))
-      setStudents(prev => [...prev, { 
-        ...student, 
-        is_active: true, 
-        teacher_id: parseInt(teacherId),
-        teacher_name: teacher?.name || 'Unknown'
-      }])
+      // Refresh both active and inactive students to get accurate counts
+      await Promise.all([
+        fetchStudents(),
+        fetchInactiveStudents()
+      ])
       
       showSuccessNotification('Success!', 'Student reactivated successfully', 'success')
       setStatusChangeData(null)
     } catch (error) {
       console.error('Error reactivating student:', error)
+      if (error.status === 401) {
+        // Token expired, redirect to login
+        window.location.href = '/login'
+        return
+      }
       showSuccessNotification('Error', 'Error reactivating student', 'error')
     }
   }
@@ -249,6 +275,172 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     }
   }
 
+  // =====================================================
+  // TEACHER MANAGEMENT FUNCTIONS
+  // =====================================================
+
+  // Fetch student's assigned teachers
+  const fetchStudentTeachers = async (studentId) => {
+    try {
+      setTeacherModalLoading(true)
+      const response = await apiService.getStudentTeachers(studentId)
+      
+      if (response.success) {
+        setAssignedTeachers(response.teachers || [])
+        
+        // Calculate available teachers (not already assigned AND active)
+        const assignedIds = (response.teachers || []).map(t => t.id)
+        const available = teachers.filter(t => 
+          !assignedIds.includes(t.id) && t.is_active === true
+        )
+        
+        console.log('🔍 [TEACHER_MANAGEMENT] Available teachers calculation:', {
+          assignedTeachers: response.teachers || [],
+          assignedIds,
+          allTeachers: teachers.length,
+          activeTeachers: teachers.filter(t => t.is_active === true).length,
+          availableTeachers: available.length,
+          availableIds: available.map(t => t.id),
+          inactiveTeachers: teachers.filter(t => t.is_active === false).map(t => ({ id: t.id, name: t.name }))
+        })
+        
+        setAvailableTeachers(available)
+      } else {
+        console.error('❌ [TEACHER_MANAGEMENT] Failed to fetch student teachers:', response)
+        showSuccessNotification('Error', 'Failed to load teacher assignments. Please run the database migration script.', 'error')
+        setAssignedTeachers([])
+        setAvailableTeachers([])
+      }
+    } catch (error) {
+      console.error('❌ [TEACHER_MANAGEMENT] Error fetching student teachers:', error)
+      console.error('🔍 [DEBUG] Student ID:', studentId)
+      console.error('🔍 [DEBUG] Error details:', {
+        message: error.message,
+        status: error.status,
+        stack: error.stack
+      })
+      showSuccessNotification('Error', `Failed to load teacher assignments: ${error.message}`, 'error')
+      setAssignedTeachers([])
+      setAvailableTeachers([])
+    } finally {
+      setTeacherModalLoading(false)
+    }
+  }
+
+  // Add teacher to student
+  const handleAddTeacher = async (teacherId) => {
+    try {
+      setTeacherModalLoading(true)
+      console.log('🔍 [ADD_TEACHER] Adding teacher:', { studentId: modalStudent.id, teacherId })
+
+      // Check if teacher is already assigned (frontend validation)
+      const isAlreadyAssigned = assignedTeachers.some(t => t.id === teacherId)
+      if (isAlreadyAssigned) {
+        showSuccessNotification('Error', 'This teacher is already assigned to the student', 'error')
+        return
+      }
+
+      const response = await apiService.addStudentTeacher(modalStudent.id, {
+        teacher_id: teacherId,
+        is_primary: assignedTeachers.length === 0 // First teacher is primary
+      })
+
+      if (response.success) {
+        await fetchStudentTeachers(modalStudent.id)
+        // Refresh both active and inactive students to get accurate counts
+        await Promise.all([
+          fetchStudents(),
+          fetchInactiveStudents()
+        ])
+        showSuccessNotification('Success!', 'Teacher added successfully', 'success')
+      } else {
+        console.error('❌ [ADD_TEACHER] Failed to add teacher:', response)
+        showSuccessNotification('Error', `Failed to add teacher: ${response.error || 'Unknown error'}`, 'error')
+      }
+    } catch (error) {
+      console.error('❌ [ADD_TEACHER] Error adding teacher:', error)
+      console.error('🔍 [DEBUG] Add teacher error details:', {
+        studentId: modalStudent.id,
+        teacherId,
+        message: error.message,
+        status: error.status
+      })
+      
+      // Better error messages based on status code
+      let errorMessage = error.message
+      if (error.status === 400) {
+        errorMessage = 'Teacher already assigned or invalid teacher ID'
+      } else if (error.status === 500) {
+        errorMessage = 'Server error - please try again'
+      }
+      
+      showSuccessNotification('Error', `Failed to add teacher: ${errorMessage}`, 'error')
+    } finally {
+      setTeacherModalLoading(false)
+    }
+  }
+
+  // Remove teacher from student
+  const handleRemoveTeacher = async (teacherId) => {
+    try {
+      setTeacherModalLoading(true)
+      const response = await apiService.removeStudentTeacher(modalStudent.id, teacherId)
+      
+      if (response.success) {
+        await fetchStudentTeachers(modalStudent.id)
+        // Refresh both active and inactive students to get accurate counts
+        await Promise.all([
+          fetchStudents(),
+          fetchInactiveStudents()
+        ])
+        showSuccessNotification('Success!', 'Teacher removed successfully', 'success')
+      }
+    } catch (error) {
+      console.error('Error removing teacher:', error)
+      showSuccessNotification('Error', 'Failed to remove teacher', 'error')
+    } finally {
+      setTeacherModalLoading(false)
+    }
+  }
+
+  // Set primary teacher
+  const handleSetPrimary = async (teacherId) => {
+    try {
+      setTeacherModalLoading(true)
+      const response = await apiService.setPrimaryTeacher(modalStudent.id, teacherId)
+      
+      if (response.success) {
+        await fetchStudentTeachers(modalStudent.id)
+        // Refresh both active and inactive students to get accurate counts
+        await Promise.all([
+          fetchStudents(),
+          fetchInactiveStudents()
+        ])
+        showSuccessNotification('Success!', 'Primary teacher updated successfully', 'success')
+      }
+    } catch (error) {
+      console.error('Error setting primary teacher:', error)
+      showSuccessNotification('Error', 'Failed to update primary teacher', 'error')
+    } finally {
+      setTeacherModalLoading(false)
+    }
+  }
+
+  // Open teacher management modal
+  const openTeacherModal = async (student) => {
+    setModalStudent(student)
+    setShowTeacherModal(true)
+    await fetchStudentTeachers(student.id)
+  }
+
+  // Close teacher management modal
+  const closeTeacherModal = () => {
+    setShowTeacherModal(false)
+    setModalStudent(null)
+    setAssignedTeachers([])
+    setAvailableTeachers([])
+  }
+
   const handleDeactivateStudent = async (studentId) => {
     try {
       console.log('Deactivating student:', studentId)
@@ -256,13 +448,11 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       console.log('Deactivate response:', response)
       
       if (response && response.success) {
-        // Let the useEffect handle the data fetching
-        // This ensures we get fresh data from the server
-        if (activeTab === 'active') {
-          fetchStudents()
-        } else {
+        // Always refresh both active and inactive students to update counts
+        await Promise.all([
+          fetchStudents(),
           fetchInactiveStudents()
-        }
+        ])
         
         showSuccessNotification('Success!', 'Student deactivated successfully - future schedules removed', 'success')
       } else {
@@ -284,9 +474,11 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     try {
       const response = await apiService.deleteStudent(deleteData.id)
       if (response.success) {
-        // Remove from both active and inactive lists
-        setStudents(prev => prev.filter(s => s.id !== deleteData.id))
-        setInactiveStudents(prev => prev.filter(s => s.id !== deleteData.id))
+        // Refresh both active and inactive students to get accurate counts
+        await Promise.all([
+          fetchStudents(),
+          fetchInactiveStudents()
+        ])
         showSuccessNotification('Success!', 'Student deleted successfully - all data removed', 'success')
       }
       
@@ -424,7 +616,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 onClick={() => handleSort('teacher_name')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Teacher</span>
+                  <span>Primary Teacher</span>
                   {sortConfig.key === 'teacher_name' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -437,7 +629,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 onClick={() => handleSort('lessons_per_week')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Lessons/Week</span>
+                  <span>Lessons/Week (Auto)</span>
                   {sortConfig.key === 'lessons_per_week' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -514,11 +706,6 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 >
                   <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {student.name}
-                    {student.teacher_name && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        Assigned to: {student.teacher_name}
-                      </div>
-                    )}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     {student.teacher_name || 'Unassigned'}
@@ -561,40 +748,31 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
-                      <select
-                        onChange={(e) => {
-                          e.stopPropagation()
-                          if (e.target.value) {
-                            handleReassignStudent(student.id, parseInt(e.target.value))
-                            e.target.value = ''
-                          }
-                        }}
-                        className="text-xs border border-gray-300 rounded px-2 py-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option value="">Reassign</option>
-                        {teachers
-                          .filter(teacher => teacher.id !== student.teacher_id)
-                          .map(teacher => (
-                            <option key={teacher.id} value={teacher.id}>
-                              {teacher.name}
-                            </option>
-                          ))}
-                      </select>
                       {student.is_active && (
-                        <div className="flex space-x-1">
+                        <>
                           <button
-                            type="button"
                             onClick={(e) => {
-                              e.preventDefault()
                               e.stopPropagation()
-                              handleHardDelete(student)
+                              openTeacherModal(student)
                             }}
-                            className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50"
+                            className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors duration-200"
                           >
-                            Delete
+                            Manage Teachers
                           </button>
-                        </div>
+                          <div className="flex space-x-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleHardDelete(student)
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
                   </td>
@@ -958,6 +1136,19 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         type={notificationData.type}
         duration={4000}
       />
+
+      {/* Teacher Management Modal */}
+            <TeacherManagementModal
+              student={modalStudent}
+              isOpen={showTeacherModal}
+              onClose={closeTeacherModal}
+              assignedTeachers={assignedTeachers}
+              availableTeachers={availableTeachers}
+              onAddTeacher={handleAddTeacher}
+              onRemoveTeacher={handleRemoveTeacher}
+              onSetPrimary={handleSetPrimary}
+              loading={teacherModalLoading}
+            />
     </div>
   )
 }

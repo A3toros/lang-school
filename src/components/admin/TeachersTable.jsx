@@ -355,7 +355,7 @@ const TeachersTable = () => {
                           <div className="flex-1">
                             <div className="font-medium text-neutral-800">{student.name}</div>
                             <div className="text-sm text-neutral-500">
-                              {student.lessons_per_week} lessons/week
+                              {student.lessons_per_week} lessons/week (auto)
                             </div>
                             <div className="text-xs text-neutral-400">
                               Added: {formatDate(student.added_date)}

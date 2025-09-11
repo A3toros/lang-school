@@ -37,6 +37,17 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     }
   }, [activeTab])
 
+  // Initial load - fetch both active and inactive teachers to ensure accurate counts
+  useEffect(() => {
+    const initialLoad = async () => {
+      await Promise.all([
+        fetchTeachers(),
+        fetchInactiveTeachers()
+      ])
+    }
+    initialLoad()
+  }, [])
+
   const fetchTeachers = async () => {
     try {
       setLoading(true)
@@ -144,18 +155,22 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         // Deactivating teacher
         const response = await apiService.deactivateTeacher(teacher.id)
         if (response.success) {
-          // Remove from active list and add to inactive list
-          setTeachers(prev => prev.filter(t => t.id !== teacher.id))
-          setInactiveTeachers(prev => [...prev, { ...teacher, is_active: false }])
+          // Refresh both active and inactive teachers to get accurate counts
+          await Promise.all([
+            fetchTeachers(),
+            fetchInactiveTeachers()
+          ])
           showSuccessNotification('Success!', 'Teacher deactivated successfully - future schedules removed', 'success')
         }
       } else if (newStatus === true) {
         // Reactivating teacher
         const response = await apiService.reactivateTeacher(teacher.id)
         if (response.success) {
-          // Remove from inactive list and add to active list
-          setInactiveTeachers(prev => prev.filter(t => t.id !== teacher.id))
-          setTeachers(prev => [...prev, { ...teacher, is_active: true }])
+          // Refresh both active and inactive teachers to get accurate counts
+          await Promise.all([
+            fetchTeachers(),
+            fetchInactiveTeachers()
+          ])
           showSuccessNotification('Success!', 'Teacher reactivated successfully', 'success')
         }
       }
@@ -177,9 +192,11 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     try {
       const response = await apiService.deleteTeacher(deleteData.id)
       if (response.success) {
-        // Remove from both active and inactive lists
-        setTeachers(prev => prev.filter(t => t.id !== deleteData.id))
-        setInactiveTeachers(prev => prev.filter(t => t.id !== deleteData.id))
+        // Refresh both active and inactive teachers to get accurate counts
+        await Promise.all([
+          fetchTeachers(),
+          fetchInactiveTeachers()
+        ])
         showSuccessNotification('Success!', 'Teacher deleted successfully - all data removed', 'success')
       }
       

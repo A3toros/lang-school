@@ -8,6 +8,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editMode, setEditMode] = useState(false)
+  
+  // Debug logging for editMode changes
+  useEffect(() => {
+    console.log('🔍 [EDIT_MODE] State changed to:', editMode)
+  }, [editMode])
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
   const [availableStudents, setAvailableStudents] = useState([])
@@ -20,14 +25,13 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [filteredStudents, setFilteredStudents] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
-  const [showMultipleLessonConfirm, setShowMultipleLessonConfirm] = useState(false)
-  const [multipleLessonData, setMultipleLessonData] = useState(null)
-  const [showPastLessonConfirm, setShowPastLessonConfirm] = useState(false)
-  const [pastLessonData, setPastLessonData] = useState(null)
   const [showFutureLessonConfirm, setShowFutureLessonConfirm] = useState(false)
   const [futureLessonData, setFutureLessonData] = useState(null)
+  const [showLessonReport, setShowLessonReport] = useState(false)
+  const [lessonReportData, setLessonReportData] = useState(null)
   const [showAutofillTip, setShowAutofillTip] = useState(false)
   const [autofillStudent, setAutofillStudent] = useState(null)
+  const [autofillTimeout, setAutofillTimeout] = useState(null)
 
   useEffect(() => {
     if (teacherId) {
@@ -36,6 +40,15 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       setLoading(false)
     }
   }, [teacherId, weekStart])
+
+  // Cleanup autofill timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autofillTimeout) {
+        clearTimeout(autofillTimeout)
+      }
+    }
+  }, [autofillTimeout])
 
   const fetchSchedule = async () => {
     try {
@@ -54,52 +67,50 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     try {
       console.log('🔍 [FETCH_STUDENTS] Fetching available students for teacher:', teacherId)
       
-      // Get unassigned students (teacher_id is null)
-      const unassignedResponse = await apiService.getStudents({ 
+      if (!teacherId) {
+        console.log('❌ [FETCH_STUDENTS] No teacherId provided, skipping fetch')
+        return
+      }
+      
+      // Get ALL active students for scheduling (any teacher can schedule any student)
+      const allStudentsResponse = await apiService.getStudents({ 
         status: 'active', 
-        teacher_id: null, 
         limit: 100 
       })
       
-      // Get students assigned to current teacher
-      const teacherStudentsResponse = await apiService.getStudentsByTeacher(teacherId)
-      
-      console.log('📊 [FETCH_STUDENTS] Unassigned response:', unassignedResponse)
-      console.log('📊 [FETCH_STUDENTS] Teacher students response:', teacherStudentsResponse)
+      console.log('📊 [FETCH_STUDENTS] All students response:', allStudentsResponse)
       
       const availableStudentsList = []
       
-      // Add unassigned students
-      if (unassignedResponse.success && unassignedResponse.students) {
-        availableStudentsList.push(...unassignedResponse.students)
-        console.log('✅ [FETCH_STUDENTS] Added unassigned students:', unassignedResponse.students.length)
+      // Add all active students
+      if (allStudentsResponse.success && allStudentsResponse.students) {
+        availableStudentsList.push(...allStudentsResponse.students)
+        console.log('✅ [FETCH_STUDENTS] Added all students:', allStudentsResponse.students.length)
       }
       
-      // Add students assigned to current teacher
-      if (teacherStudentsResponse.success && teacherStudentsResponse.students) {
-        availableStudentsList.push(...teacherStudentsResponse.students)
-        console.log('✅ [FETCH_STUDENTS] Added teacher students:', teacherStudentsResponse.students.length)
-      }
-      
-      // Remove duplicates (in case a student appears in both lists)
-      const uniqueStudents = availableStudentsList.filter((student, index, self) => 
-        index === self.findIndex(s => s.id === student.id)
-      )
-      
-      console.log('🎯 [FETCH_STUDENTS] Total available students:', uniqueStudents.length)
-      setAvailableStudents(uniqueStudents)
+      console.log('🎯 [FETCH_STUDENTS] Total available students:', availableStudentsList.length)
+      setAvailableStudents(availableStudentsList)
     } catch (err) {
       console.error('Error fetching available students:', err)
+      // Show user-friendly error message
+      alert('Failed to load students. Please refresh the page and try again.')
     }
   }
 
-  // Enhanced input functionality
+  // Enhanced input functionality with debouncing
   const filterStudents = (input) => {
+    // Clear existing timeout
+    if (autofillTimeout) {
+      clearTimeout(autofillTimeout)
+      setAutofillTimeout(null)
+    }
+    
     if (!input.trim()) {
       setFilteredStudents([])
       setShowSuggestions(false)
       setShowAutofillTip(false)
       setAutofillStudent(null)
+      setSelectedStudent(null)
       return
     }
     
@@ -110,7 +121,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     setFilteredStudents(filtered)
     setShowSuggestions(true)
     
-    // Auto-fill if 3 or fewer students found
+    // Auto-fill if 3 or fewer students found - with debouncing
     if (filtered.length <= 3 && filtered.length > 0) {
       const firstStudent = filtered[0]
       console.log('🎯 [AUTOFILL] Showing tip for:', firstStudent.name, 'Input:', input)
@@ -119,16 +130,20 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       setShowAutofillTip(true)
       setAutofillStudent(firstStudent)
       
-      // Hide tip after 3 seconds
-      setTimeout(() => {
+      // Hide tip after 5 seconds (increased from 3)
+      const timeout = setTimeout(() => {
         console.log('⏰ [AUTOFILL] Hiding tip after timeout')
         setShowAutofillTip(false)
         setAutofillStudent(null)
-      }, 3000)
+        setSelectedStudent(null)
+      }, 5000)
+      
+      setAutofillTimeout(timeout)
     } else {
       console.log('❌ [AUTOFILL] No tip - filtered.length:', filtered.length)
       setShowAutofillTip(false)
       setAutofillStudent(null)
+      setSelectedStudent(null)
     }
   }
 
@@ -161,22 +176,44 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   }
 
   const handleCellDoubleClick = (dayIndex, timeSlot) => {
-    const cellKey = `${dayIndex}-${timeSlot}`
-    setEditingCell(cellKey)
-    setStudentInput('')
-    setSelectedStudent(null)
-    setShowSuggestions(false)
-    setShowAutofillTip(false)
-    setAutofillStudent(null)
+    console.log('🔍 [DOUBLE_CLICK] editMode:', editMode, 'dayIndex:', dayIndex, 'timeSlot:', timeSlot)
     
-    // Fetch available students for this teacher
-    fetchAvailableStudents()
+    // Check if there's already a student in this slot
+    const existingSchedule = getStudentForSlot(dayIndex, timeSlot)
+    console.log('🔍 [DOUBLE_CLICK] existingSchedule:', existingSchedule)
     
-    // Focus input after state update
-    setTimeout(() => {
-      const input = document.getElementById(`student-input-${cellKey}`)
-      if (input) input.focus()
-    }, 0)
+    if (existingSchedule) {
+      if (editMode) {
+        console.log('🔍 [DOUBLE_CLICK] Edit mode - calling handleDeleteLesson')
+        // If in edit mode, delete the student
+        handleDeleteLesson(existingSchedule)
+      } else {
+        console.log('🔍 [DOUBLE_CLICK] Read mode - calling fetchLessonReport')
+        // If in read mode, show lesson report
+        fetchLessonReport(existingSchedule)
+      }
+    } else {
+      if (!editMode) return // Only allow adding students in edit mode
+      // If empty, add a student
+      const cellKey = `${dayIndex}-${timeSlot}`
+      setEditingCell(cellKey)
+      setStudentInput('')
+      setSelectedStudent(null)
+      setShowSuggestions(false)
+      setShowAutofillTip(false)
+      setAutofillStudent(null)
+      
+      // Fetch available students for this teacher
+      if (teacherId) {
+        fetchAvailableStudents()
+      }
+      
+      // Focus input after state update
+      setTimeout(() => {
+        const input = document.getElementById(`student-input-${cellKey}`)
+        if (input) input.focus()
+      }, 0)
+    }
   }
 
   const handleCellClickOutside = () => {
@@ -191,7 +228,9 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const handleAddStudentClick = (timeSlot) => {
     setSelectedTimeSlot(timeSlot)
     setShowAddStudentModal(true)
-    fetchAvailableStudents()
+    if (teacherId) {
+      fetchAvailableStudents()
+    }
   }
 
   const getDayNumber = (dayName) => {
@@ -210,19 +249,37 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   }
 
   const handleAddStudentToSchedule = async (student = null, dayIndex = null, timeSlot = null) => {
+    console.log('🔍 [HANDLE_ADD_STUDENT] Called with:', {
+      student: student?.name,
+      dayIndex,
+      timeSlot,
+      selectedStudentId,
+      selectedTimeSlot
+    })
+    
     const studentToUse = student || availableStudents.find(s => s.id === selectedStudentId)
     const timeSlotToUse = timeSlot || selectedTimeSlot
     
-    if (!studentToUse || !timeSlotToUse) return
-
-    // Validate that student is either unassigned or belongs to current teacher
-    if (studentToUse.teacher_id && studentToUse.teacher_id !== teacherId) {
-      alert(`Cannot add student "${studentToUse.name}" to schedule. This student is already assigned to another teacher.`)
+    console.log('🔍 [HANDLE_ADD_STUDENT] Using:', {
+      studentToUse: studentToUse?.name,
+      timeSlotToUse
+    })
+    
+    if (!studentToUse || !timeSlotToUse) {
+      console.log('❌ [HANDLE_ADD_STUDENT] Missing required data:', {
+        hasStudent: !!studentToUse,
+        hasTimeSlot: !!timeSlotToUse
+      })
       return
     }
 
+    // Note: Backend will handle the actual validation of teacher-student relationships
+    // Frontend validation is minimal - just check if student exists
+    console.log('✅ [HANDLE_ADD_STUDENT] Student validation passed, proceeding to backend validation')
+
     try {
       const dayNumber = dayIndex !== null ? dayIndex : getDayNumber(timeSlotToUse.day)
+      console.log('🔍 [HANDLE_ADD_STUDENT] dayNumber:', dayNumber, 'timeSlotToUse:', timeSlotToUse)
       
       const scheduleData = {
         teacher_id: teacherId,
@@ -231,31 +288,28 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         time_slot: timeSlotToUse.time || timeSlotToUse,
         week_start_date: weekStart
       }
+      console.log('🔍 [HANDLE_ADD_STUDENT] scheduleData:', scheduleData)
+      console.log('🔍 [HANDLE_ADD_STUDENT] studentToUse.lessons_per_week:', studentToUse.lessons_per_week)
 
-      // Check if student has multiple lessons per week
-      if (studentToUse.lessons_per_week > 1) {
-        // Show confirmation modal for multiple lessons
-        setShowMultipleLessonConfirm(true)
-        setMultipleLessonData({
-          student: studentToUse,
-          timeSlot: timeSlotToUse,
-          lessonsPerWeek: studentToUse.lessons_per_week,
-          scheduleData
-        })
-      } else {
-        // Single lesson - proceed directly
-        await createSchedule(scheduleData)
-      }
+      // Since lessons_per_week is now dynamic and starts at 0, always proceed directly
+      console.log('🔍 [HANDLE_ADD_STUDENT] Creating schedule directly (lessons_per_week is dynamic)')
+      await createSchedule(scheduleData)
+      console.log('✅ [HANDLE_ADD_STUDENT] createSchedule completed successfully')
     } catch (err) {
-      console.error('Error adding student to schedule:', err)
+      console.error('❌ [HANDLE_ADD_STUDENT] Error adding student to schedule:', err)
       alert('Failed to add student to schedule: ' + err.message)
     }
   }
 
   const createSchedule = async (scheduleData) => {
+    console.log('🔍 [CREATE_SCHEDULE] Starting with data:', scheduleData)
     try {
+      console.log('🔍 [CREATE_SCHEDULE] Calling apiService.createSchedule')
       const response = await apiService.createSchedule(scheduleData)
+      console.log('🔍 [CREATE_SCHEDULE] API response:', response)
+      
       if (response.success) {
+        console.log('✅ [CREATE_SCHEDULE] Success, refreshing schedule')
         // Refresh the schedule
         await fetchSchedule()
         setShowAddStudentModal(false)
@@ -265,32 +319,32 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         setStudentInput('')
         setSelectedStudent(null)
         setShowSuggestions(false)
-        alert('Schedule created successfully!')
+        console.log('✅ [CREATE_SCHEDULE] UI state reset completed')
       } else {
+        console.error('❌ [CREATE_SCHEDULE] API returned error:', response.error)
         alert('Failed to create schedule: ' + response.error)
       }
     } catch (err) {
-      console.error('Error creating schedule:', err)
-      alert('Error creating schedule: ' + err.message)
+      console.error('❌ [CREATE_SCHEDULE] Exception caught:', err)
+      if (err.message.includes('Student is assigned to another teacher')) {
+        alert('This student is already assigned to another teacher.')
+      } else if (err.message.includes('Student not found')) {
+        alert('Student not found. Please refresh and try again.')
+      } else if (err.message.includes('Conflict')) {
+        alert('There is a scheduling conflict. Please choose a different time slot.')
+      } else {
+        alert('Failed to create schedule: ' + err.message)
+      }
     }
   }
 
-  const confirmMultipleLessons = async () => {
-    if (multipleLessonData) {
-      await createSchedule(multipleLessonData.scheduleData)
-      setShowMultipleLessonConfirm(false)
-      setMultipleLessonData(null)
-    }
-  }
 
   const timeSlots = [
-    '6:30-7:00', '7:00-7:30', '7:30-8:00', '8:00-8:30', '8:30-9:00',
-    '9:00-9:30', '9:30-10:00', '10:00-10:30', '10:30-11:00', '11:00-11:30',
-    '11:30-12:00', '12:00-12:30', '12:30-13:00', '13:00-13:30', '13:30-14:00',
-    '14:00-14:30', '14:30-15:00', '15:00-15:30', '15:30-16:00', '16:00-16:30',
-    '16:30-17:00', '17:00-17:30', '17:30-18:00', '18:00-18:30', '18:30-19:00',
-    '19:00-19:30', '19:30-20:00', '20:00-20:30', '20:30-21:00', '21:00-21:30',
-    '21:30-22:00'
+    '8:00-8:30', '8:30-9:00', '9:00-9:30', '9:30-10:00', '10:00-10:30', '10:30-11:00',
+    '11:00-11:30', '11:30-12:00', '12:00-12:30', '12:30-13:00', '13:00-13:30', '13:30-14:00',
+    '14:00-14:30', '14:30-15:00', '15:00-15:30', '15:30-16:00', '16:00-16:30', '16:30-17:00',
+    '17:00-17:30', '17:30-18:00', '18:00-18:30', '18:30-19:00', '19:00-19:30', '19:30-20:00',
+    '20:00-20:30', '20:30-21:00', '21:00-21:30'
   ]
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -326,39 +380,52 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     return schedule.find(s => s.day_of_week === dayOfWeek && s.time_slot === timeSlot)
   }
 
+  // Fetch lesson report for a specific schedule
+  const fetchLessonReport = async (schedule) => {
+    try {
+      const response = await apiService.getReports({
+        student_id: schedule.student_id,
+        teacher_id: schedule.teacher_id,
+        lesson_date: schedule.week_start_date,
+        time_slot: schedule.time_slot
+      })
+      
+      if (response.reports && response.reports.length > 0) {
+        setLessonReportData({
+          schedule,
+          report: response.reports[0]
+        })
+      } else {
+        setLessonReportData({
+          schedule,
+          report: null
+        })
+      }
+      setShowLessonReport(true)
+    } catch (error) {
+      console.error('Error fetching lesson report:', error)
+      alert('Error fetching lesson report: ' + error.message)
+    }
+  }
+
   // Enhanced lesson deletion functionality
   const handleDeleteLesson = async (schedule) => {
+    console.log('🔍 [DELETE_LESSON] Called with schedule:', schedule, 'editMode:', editMode)
     const isPast = new Date(schedule.week_start_date) < new Date()
     
     if (isPast) {
+      console.log('🔍 [DELETE_LESSON] Past lesson - showing confirmation')
       // Show confirmation for past lesson cancellation
-      setShowPastLessonConfirm(true)
-      setPastLessonData(schedule)
+      setShowFutureLessonConfirm(true)
+      setFutureLessonData(schedule)
     } else {
+      console.log('🔍 [DELETE_LESSON] Future lesson - showing confirmation')
       // Show confirmation for future lesson deletion
       setShowFutureLessonConfirm(true)
       setFutureLessonData(schedule)
     }
   }
 
-  const confirmPastLessonCancellation = async () => {
-    if (pastLessonData) {
-      try {
-        const response = await apiService.deleteSchedule(pastLessonData.id)
-        if (response.success) {
-          await fetchSchedule()
-          alert('Past lesson marked as cancelled')
-        } else {
-          alert('Failed to cancel lesson: ' + response.error)
-        }
-      } catch (err) {
-        console.error('Error cancelling lesson:', err)
-        alert('Error cancelling lesson: ' + err.message)
-      }
-      setShowPastLessonConfirm(false)
-      setPastLessonData(null)
-    }
-  }
 
   const confirmFutureLessonDeletion = async () => {
     if (futureLessonData) {
@@ -396,6 +463,10 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
             placeholder="Type student name..."
             className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && selectedStudent) {
                 handleAddStudentToSchedule(selectedStudent, dayIndex, timeSlot)
@@ -433,7 +504,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                     <div className="flex flex-col">
                       <span className="font-medium">{student.name}</span>
                       <span className="text-xs text-gray-500">
-                        {student.lessons_per_week} lessons
+                        {student.lessons_per_week} lessons (auto)
                       </span>
                     </div>
                     <div className="flex flex-col items-end">
@@ -451,31 +522,46 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
             </div>
           )}
           
-          {/* Autofill Tip */}
+          {/* Autofill Tip - Minimalistic with Click Handler */}
           {showAutofillTip && autofillStudent && (
-            <div className="absolute z-30 w-full mt-1 bg-blue-50 border border-blue-200 rounded-lg shadow-lg p-3">
-              <div className="flex items-center space-x-2">
-                <div className="flex-shrink-0">
-                  <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-blue-800">
-                    <span className="font-medium">Auto-filled:</span> {autofillStudent.name}
-                  </p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    Press <kbd className="px-1 py-0.5 bg-blue-100 rounded text-xs">Enter</kbd> to confirm or continue typing
-                  </p>
-                </div>
+            <div 
+              className="absolute z-30 w-full mt-1 bg-blue-50 border border-blue-200 rounded shadow-sm px-2 py-1 cursor-pointer hover:bg-blue-100"
+              onClick={() => {
+                console.log('🎯 [AUTOFILL_CLICK] Clicked autofill tip', {
+                  selectedStudent,
+                  autofillStudent,
+                  dayIndex,
+                  timeSlot
+                })
+                const studentToUse = selectedStudent || autofillStudent
+                if (studentToUse) {
+                  console.log('✅ [AUTOFILL_CLICK] Calling handleAddStudentToSchedule with:', {
+                    student: studentToUse.name,
+                    dayIndex,
+                    timeSlot
+                  })
+                  handleAddStudentToSchedule(studentToUse, dayIndex, timeSlot)
+                  setEditingCell(null)
+                } else {
+                  console.log('❌ [AUTOFILL_CLICK] No student available for scheduling')
+                }
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-blue-700">
+                  <span className="font-medium">{autofillStudent.name}</span>
+                  <span className="text-blue-500 ml-1">• Press Enter or click</span>
+                </span>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation() // Prevent triggering parent click
                     setShowAutofillTip(false)
                     setAutofillStudent(null)
+                    setSelectedStudent(null)
                   }}
-                  className="flex-shrink-0 text-blue-400 hover:text-blue-600"
+                  className="text-blue-400 hover:text-blue-600 ml-2"
                 >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
@@ -488,14 +574,20 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
     if (existingSchedule) {
       return (
-        <div className="flex items-center justify-between">
+        <div 
+          className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-1"
+          onDoubleClick={() => handleCellDoubleClick(dayIndex, timeSlot)}
+          title={editMode ? "Double-click to remove student" : "Double-click to view lesson report"}
+        >
           <span className="text-sm font-medium">{existingSchedule.student_name}</span>
-          <button
-            onClick={() => handleDeleteLesson(existingSchedule)}
-            className="text-red-500 hover:text-red-700 text-xs"
-          >
-            ×
-          </button>
+          {editMode && (
+            <button
+              onClick={() => handleDeleteLesson(existingSchedule)}
+              className="text-red-500 hover:text-red-700 text-xs"
+            >
+              ×
+            </button>
+          )}
         </div>
       )
     }
@@ -810,11 +902,12 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -10 }}
                               transition={{ duration: 0.2 }}
+                              onClick={editMode && isEditable ? () => handleDeleteLesson(student) : undefined}
                             >
                               <div className="truncate">{student.student_name}</div>
                               {editMode && isEditable && (
                                 <div className="mt-1 text-xs opacity-75">
-                                  Click to edit
+                                  Click to remove
                                 </div>
                               )}
                             </motion.div>
@@ -928,69 +1021,59 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           </motion.div>
         </div>
       )}
-      {/* Multiple Lesson Confirmation Modal */}
-      {showMultipleLessonConfirm && multipleLessonData && (
+
+      {/* Lesson Report Modal */}
+      {showLessonReport && lessonReportData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">
-              Create Multiple Lessons
+            <h3 className="text-lg font-semibold mb-4 text-blue-600">
+              Lesson Report
             </h3>
-            <p className="text-gray-600 mb-4">
-              <strong>{multipleLessonData.student.name}</strong> has{' '}
-              <strong>{multipleLessonData.lessonsPerWeek} lessons/week</strong>.
-            </p>
-            <p className="text-sm text-gray-500 mb-4">
-              This will create {multipleLessonData.lessonsPerWeek} schedule entries for{' '}
-              {multipleLessonData.timeSlot.day} at {multipleLessonData.timeSlot.time}.
-            </p>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Student:</strong> {lessonReportData.schedule.student_name}
+              </p>
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Date:</strong> {new Date(lessonReportData.schedule.week_start_date).toLocaleDateString()}
+              </p>
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Time:</strong> {lessonReportData.schedule.time_slot}
+              </p>
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Status:</strong> {lessonReportData.schedule.attendance_status}
+              </p>
+            </div>
+            
+            {lessonReportData.report ? (
+              <div className="mb-4">
+                <h4 className="font-medium text-gray-700 mb-2">Teacher's Report:</h4>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {lessonReportData.report.comment}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Report created: {new Date(lessonReportData.report.created_at).toLocaleString()}
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <p className="text-gray-500 italic">No lesson report available for this lesson.</p>
+              </div>
+            )}
+            
             <div className="flex space-x-3">
               <button
-                onClick={() => setShowMultipleLessonConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                onClick={() => setShowLessonReport(false)}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                Cancel
-              </button>
-              <button
-                onClick={confirmMultipleLessons}
-                className="flex-1 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg"
-              >
-                Create {multipleLessonData.lessonsPerWeek} Lessons
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Past Lesson Cancellation Modal */}
-      {showPastLessonConfirm && pastLessonData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4 text-yellow-600">
-              Cancel Past Lesson
-            </h3>
-            <p className="text-gray-600 mb-4">
-              This lesson will be marked as <strong>cancelled</strong> but preserved for historical records.
-            </p>
-            <p className="text-sm text-gray-500 mb-4">
-              It will <strong>not affect</strong> the student's total lessons count.
-            </p>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowPastLessonConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPastLessonCancellation}
-                className="flex-1 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg"
-              >
-                Mark as Cancelled
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Future Lesson Deletion Modal */}
       {showFutureLessonConfirm && futureLessonData && (

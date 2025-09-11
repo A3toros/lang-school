@@ -34,14 +34,26 @@ export const AuthProvider = ({ children }) => {
             // Verify token and get user data
             apiDebugger.info('AUTH_CONTEXT', 'Verifying existing token')
             const userData = await apiService.verifyToken()
-            setUser(userData.user)
-            apiDebugger.success('AUTH_CONTEXT', 'Token verified successfully', { 
-              userId: userData.user?.id,
+            
+            // Map backend response to frontend user object
+            const mappedUser = {
+              id: userData.user?.id,
+              username: userData.user?.username,
               role: userData.user?.role,
-              teacherId: userData.user?.teacher_id,
+              teacherId: userData.user?.teacher_id, // Map teacher_id to teacherId
               teacherName: userData.user?.teacher_name,
               isAdmin: userData.user?.role === 'admin',
               isTeacher: userData.user?.role === 'teacher'
+            }
+            
+            setUser(mappedUser)
+            apiDebugger.success('AUTH_CONTEXT', 'Token verified successfully', { 
+              userId: mappedUser.id,
+              role: mappedUser.role,
+              teacherId: mappedUser.teacherId,
+              teacherName: mappedUser.teacherName,
+              isAdmin: mappedUser.isAdmin,
+              isTeacher: mappedUser.isTeacher
             })
           } catch (error) {
             apiDebugger.warning('AUTH_CONTEXT', 'Token verification failed', { 
@@ -121,16 +133,28 @@ export const AuthProvider = ({ children }) => {
       if (data.success && data.accessToken && data.refreshToken) {
         apiDebugger.info('AUTH_CONTEXT', 'Storing tokens and setting user', { username })
         tokenManager.storeTokens(data.accessToken, data.refreshToken)
-        setUser(data.user)
         
-        apiDebugger.success('AUTH_CONTEXT', 'Login successful', { 
-          username,
-          userId: data.user?.id,
+        // Map backend response to frontend user object
+        const mappedUser = {
+          id: data.user?.id,
+          username: data.user?.username,
           role: data.user?.role,
-          teacherId: data.user?.teacher_id,
+          teacherId: data.user?.teacher_id, // Map teacher_id to teacherId
           teacherName: data.user?.teacher_name,
           isAdmin: data.user?.role === 'admin',
           isTeacher: data.user?.role === 'teacher'
+        }
+        
+        setUser(mappedUser)
+        
+        apiDebugger.success('AUTH_CONTEXT', 'Login successful', { 
+          username,
+          userId: mappedUser.id,
+          role: mappedUser.role,
+          teacherId: mappedUser.teacherId,
+          teacherName: mappedUser.teacherName,
+          isAdmin: mappedUser.isAdmin,
+          isTeacher: mappedUser.isTeacher
         })
         
         return { success: true }

@@ -86,11 +86,11 @@ async function getAdminDashboard(event, user) {
       SELECT 
         t.id,
         t.name,
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate,
         COUNT(DISTINCT s.id) as unique_students
       FROM teachers t
@@ -166,13 +166,13 @@ async function getTeacherDashboard(event, user) {
     // Get teacher stats
     const statsQuery = `
       SELECT 
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'scheduled' THEN 1 END) as scheduled_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN 1 END), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN 1 END), 0)) * 100, 2
         ) as attendance_rate,
         COUNT(DISTINCT s.id) as unique_students
       FROM student_schedules ss
@@ -244,7 +244,7 @@ async function getDashboardStats(event, user) {
           'system' as type,
           COUNT(DISTINCT t.id) as teachers,
           COUNT(DISTINCT s.id) as students,
-          COUNT(ss.id) as total_lessons,
+          COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
           COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons
         FROM teachers t
         LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
@@ -257,7 +257,7 @@ async function getDashboardStats(event, user) {
         SELECT 
           'teacher' as type,
           COUNT(DISTINCT s.id) as students,
-          COUNT(ss.id) as total_lessons,
+          COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
           COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons
         FROM student_schedules ss
         JOIN students s ON ss.student_id = s.id
@@ -295,7 +295,7 @@ async function getNotifications(event, user) {
         GROUP BY ss.teacher_id
         HAVING ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) < 70
         LIMIT 1
       `

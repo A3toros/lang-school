@@ -112,12 +112,12 @@ async function getTeacherAnalytics(event, user) {
         t.id,
         t.name,
         t.email,
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate,
         COUNT(DISTINCT s.id) as unique_students,
         COUNT(lr.id) as total_reports
@@ -153,12 +153,12 @@ async function getStudentAnalytics(event, user) {
         t.name as teacher_name,
         s.lessons_per_week,
         s.added_date,
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate,
         COUNT(lr.id) as total_reports
       FROM students s
@@ -242,7 +242,7 @@ async function getPerformanceTrends(event, user) {
         COUNT(CASE WHEN attendance_status = 'absent' THEN 1 END) as absent,
         ROUND(
           (COUNT(CASE WHEN attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(ss.id), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate
       FROM student_schedules ss
       WHERE attendance_date >= CURRENT_DATE - INTERVAL '${days} days'
@@ -322,7 +322,7 @@ async function getPerformanceMetrics(event, user) {
         t.id,
         t.name,
         AVG(CASE WHEN ss.attendance_status = 'completed' THEN 1.0 ELSE 0.0 END) as avg_attendance,
-        COUNT(ss.id) as total_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         COUNT(lr.id) as total_reports,
         COUNT(DISTINCT s.id) as unique_students
       FROM teachers t

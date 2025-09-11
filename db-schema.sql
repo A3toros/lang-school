@@ -26,7 +26,7 @@ CREATE TABLE students (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     teacher_id INTEGER REFERENCES teachers(id) ON DELETE CASCADE,
-    lessons_per_week INTEGER DEFAULT 1 CHECK (lessons_per_week > 0),
+    lessons_per_week INTEGER DEFAULT 0 CHECK (lessons_per_week >= 0),
     added_date DATE NOT NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -188,77 +188,77 @@ INSERT INTO teachers (name, email, photo_url, description) VALUES
 ('Giuseppe Rossi', 'giuseppe.rossi@langschool.com', '/pics/teachers/giuseppe.jpg', 'Italian teacher from Rome. Loves teaching through Italian art, history, and delicious food culture.'),
 ('Hans Mueller', 'hans.mueller@langschool.com', '/pics/teachers/hans.jpg', 'German teacher with engineering background. Great at teaching technical German and business language.');
 
--- Insert sample students
+-- Insert sample students (lessons_per_week will be auto-calculated by trigger)
 INSERT INTO students (name, teacher_id, lessons_per_week, added_date) VALUES
 -- Students for Sarah Johnson (teacher_id: 1)
-('Emma Wilson', 1, 2, '2024-01-15'),
-('James Brown', 1, 1, '2024-02-03'),
-('Olivia Davis', 1, 3, '2024-01-28'),
-('William Miller', 1, 2, '2024-02-10'),
-('Sophia Garcia', 1, 1, '2024-01-20'),
+('Emma Wilson', 1, 0, '2024-01-15'),
+('James Brown', 1, 0, '2024-02-03'),
+('Olivia Davis', 1, 0, '2024-01-28'),
+('William Miller', 1, 0, '2024-02-10'),
+('Sophia Garcia', 1, 0, '2024-01-20'),
 
 -- Students for Michael Chen (teacher_id: 2)
-('Alex Zhang', 2, 2, '2024-01-12'),
-('Lisa Wang', 2, 1, '2024-02-05'),
-('Kevin Liu', 2, 3, '2024-01-25'),
-('Jennifer Chen', 2, 2, '2024-02-08'),
-('Daniel Wu', 2, 1, '2024-01-30'),
+('Alex Zhang', 2, 0, '2024-01-12'),
+('Lisa Wang', 2, 0, '2024-02-05'),
+('Kevin Liu', 2, 0, '2024-01-25'),
+('Jennifer Chen', 2, 0, '2024-02-08'),
+('Daniel Wu', 2, 0, '2024-01-30'),
 
 -- Students for Elena Rodriguez (teacher_id: 3)
-('Carlos Martinez', 3, 2, '2024-01-18'),
-('Isabella Lopez', 3, 1, '2024-02-12'),
-('Diego Gonzalez', 3, 3, '2024-01-22'),
-('Valentina Perez', 3, 2, '2024-02-15'),
-('Santiago Rodriguez', 3, 1, '2024-01-08'),
+('Carlos Martinez', 3, 0, '2024-01-18'),
+('Isabella Lopez', 3, 0, '2024-02-12'),
+('Diego Gonzalez', 3, 0, '2024-01-22'),
+('Valentina Perez', 3, 0, '2024-02-15'),
+('Santiago Rodriguez', 3, 0, '2024-01-08'),
 
 -- Students for David Kim (teacher_id: 4)
-('Min-jun Park', 4, 2, '2024-01-14'),
-('So-young Lee', 4, 1, '2024-02-07'),
-('Jae-hoon Kim', 4, 3, '2024-01-26'),
-('Hye-jin Choi', 4, 2, '2024-02-11'),
-('Tae-woo Jung', 4, 1, '2024-01-31'),
+('Min-jun Park', 4, 0, '2024-01-14'),
+('So-young Lee', 4, 0, '2024-02-07'),
+('Jae-hoon Kim', 4, 0, '2024-01-26'),
+('Hye-jin Choi', 4, 0, '2024-02-11'),
+('Tae-woo Jung', 4, 0, '2024-01-31'),
 
 -- Students for Anna Petrov (teacher_id: 5)
-('Vladimir Petrov', 5, 2, '2024-01-16'),
-('Natalia Ivanova', 5, 1, '2024-02-09'),
-('Dmitri Volkov', 5, 3, '2024-01-24'),
-('Elena Sokolova', 5, 2, '2024-02-13'),
-('Sergei Kozlov', 5, 1, '2024-01-29'),
+('Vladimir Petrov', 5, 0, '2024-01-16'),
+('Natalia Ivanova', 5, 0, '2024-02-09'),
+('Dmitri Volkov', 5, 0, '2024-01-24'),
+('Elena Sokolova', 5, 0, '2024-02-13'),
+('Sergei Kozlov', 5, 0, '2024-01-29'),
 
 -- Students for Yuki Tanaka (teacher_id: 6)
-('Hiroshi Yamamoto', 6, 2, '2024-01-17'),
-('Yuki Sato', 6, 1, '2024-02-06'),
-('Takeshi Nakamura', 6, 3, '2024-01-27'),
-('Akiko Ito', 6, 2, '2024-02-14'),
-('Kenji Suzuki', 6, 1, '2024-01-21'),
+('Hiroshi Yamamoto', 6, 0, '2024-01-17'),
+('Yuki Sato', 6, 0, '2024-02-06'),
+('Takeshi Nakamura', 6, 0, '2024-01-27'),
+('Akiko Ito', 6, 0, '2024-02-14'),
+('Kenji Suzuki', 6, 0, '2024-01-21'),
 
 -- Students for Pierre Dubois (teacher_id: 7)
-('Marie Dubois', 7, 2, '2024-01-19'),
-('Jean Martin', 7, 1, '2024-02-04'),
-('Claire Bernard', 7, 3, '2024-01-23'),
-('François Moreau', 7, 2, '2024-02-16'),
-('Camille Petit', 7, 1, '2024-01-11'),
+('Marie Dubois', 7, 0, '2024-01-19'),
+('Jean Martin', 7, 0, '2024-02-04'),
+('Claire Bernard', 7, 0, '2024-01-23'),
+('François Moreau', 7, 0, '2024-02-16'),
+('Camille Petit', 7, 0, '2024-01-11'),
 
 -- Students for Maria Silva (teacher_id: 8)
-('João Santos', 8, 2, '2024-01-13'),
-('Ana Costa', 8, 1, '2024-02-17'),
-('Pedro Oliveira', 8, 3, '2024-01-31'),
-('Beatriz Ferreira', 8, 2, '2024-02-18'),
-('Rafael Almeida', 8, 1, '2024-02-01'),
+('João Santos', 8, 0, '2024-01-13'),
+('Ana Costa', 8, 0, '2024-02-17'),
+('Pedro Oliveira', 8, 0, '2024-01-31'),
+('Beatriz Ferreira', 8, 0, '2024-02-18'),
+('Rafael Almeida', 8, 0, '2024-02-01'),
 
 -- Students for Giuseppe Rossi (teacher_id: 9)
-('Marco Bianchi', 9, 2, '2024-02-02'),
-('Giulia Romano', 9, 1, '2024-02-19'),
-('Alessandro Ferrari', 9, 3, '2024-02-03'),
-('Francesca Conti', 9, 2, '2024-02-20'),
-('Lorenzo Ricci', 9, 1, '2024-02-04'),
+('Marco Bianchi', 9, 0, '2024-02-02'),
+('Giulia Romano', 9, 0, '2024-02-19'),
+('Alessandro Ferrari', 9, 0, '2024-02-03'),
+('Francesca Conti', 9, 0, '2024-02-20'),
+('Lorenzo Ricci', 9, 0, '2024-02-04'),
 
 -- Students for Hans Mueller (teacher_id: 10)
-('Klaus Weber', 10, 2, '2024-02-05'),
-('Greta Schmidt', 10, 1, '2024-02-21'),
-('Wolfgang Fischer', 10, 3, '2024-02-06'),
-('Ingrid Wagner', 10, 2, '2024-02-22'),
-('Helmut Becker', 10, 1, '2024-02-07');
+('Klaus Weber', 10, 0, '2024-02-05'),
+('Greta Schmidt', 10, 0, '2024-02-21'),
+('Wolfgang Fischer', 10, 0, '2024-02-06'),
+('Ingrid Wagner', 10, 0, '2024-02-22'),
+('Helmut Becker', 10, 0, '2024-02-07');
 
 -- Insert admin user (password: admin123)
 INSERT INTO users (username, password, role, teacher_id) VALUES
@@ -852,14 +852,6 @@ COMMIT;
 
 BEGIN;
 
--- 1. Fix lessons_per_week constraint to allow 0
-ALTER TABLE students DROP CONSTRAINT IF EXISTS students_lessons_per_week_check;
-ALTER TABLE students ADD CONSTRAINT students_lessons_per_week_check 
-CHECK (lessons_per_week >= 0);
-
--- Update default to 0 for new students (they start with no lessons)
-ALTER TABLE students ALTER COLUMN lessons_per_week SET DEFAULT 0;
-
 -- 2. Add lesson type classification to student_schedules
 ALTER TABLE student_schedules 
 ADD COLUMN lesson_type VARCHAR(20) DEFAULT 'scheduled' 
@@ -905,5 +897,210 @@ END;
 
 COMMIT;
 
+CREATE TABLE student_teachers (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+    teacher_id INTEGER REFERENCES teachers(id) ON DELETE CASCADE,
+    is_primary BOOLEAN DEFAULT false,
+    assigned_date DATE DEFAULT CURRENT_DATE,
+    assigned_by INTEGER REFERENCES users(id),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_id, teacher_id)
+);
 
+-- Create partial unique index to ensure only one primary teacher per student
+CREATE UNIQUE INDEX idx_student_teachers_unique_primary 
+ON student_teachers (student_id) 
+WHERE is_primary = true;
+```
 
+### Modified Tables
+```sql
+-- Add primary teacher reference
+ALTER TABLE students ADD COLUMN primary_teacher_id INTEGER REFERENCES teachers(id);
+ALTER TABLE students ADD COLUMN teacher_count INTEGER DEFAULT 0;
+
+-- Add primary teacher reference to schedules
+ALTER TABLE student_schedules ADD COLUMN primary_teacher_id INTEGER REFERENCES teachers(id);
+
+-- Migration: Fix to Monday=0 Mapping (CORRECT VERSION)
+-- Date: 2025-01-15
+-- Description: Change all day_of_week values from Sunday=0 to Monday=0 mapping
+
+BEGIN;
+
+-- 1. Update attendance status constraint to include absent_warned
+ALTER TABLE student_schedules 
+DROP CONSTRAINT IF EXISTS student_schedules_attendance_status_check;
+
+ALTER TABLE student_schedules
+ADD CONSTRAINT student_schedules_attendance_status_check
+CHECK (attendance_status IN ('scheduled','completed','absent','absent_warned'));
+
+-- 2. First, update time_slots table with correct 8:00-21:30 range
+DELETE FROM time_slots;
+
+INSERT INTO time_slots (time_slot, duration_minutes) VALUES
+('8:00-8:30', 30), ('8:30-9:00', 30), ('9:00-9:30', 30), ('9:30-10:00', 30),
+('10:00-10:30', 30), ('10:30-11:00', 30), ('11:00-11:30', 30), ('11:30-12:00', 30),
+('12:00-12:30', 30), ('12:30-13:00', 30), ('13:00-13:30', 30), ('13:30-14:00', 30),
+('14:00-14:30', 30), ('14:30-15:00', 30), ('15:00-15:30', 30), ('15:30-16:00', 30),
+('16:00-16:30', 30), ('16:30-17:00', 30), ('17:00-17:30', 30), ('17:30-18:00', 30),
+('18:00-18:30', 30), ('18:30-19:00', 30), ('19:00-19:30', 30), ('19:30-20:00', 30),
+('20:00-20:30', 30), ('20:30-21:00', 30), ('21:00-21:30', 30), ('21:30-22:00', 30);
+
+-- 3. Now migrate student_schedules time slots to match time_slots table
+UPDATE student_schedules 
+SET time_slot = CASE 
+    -- Map early morning slots to 8:00+ range
+    WHEN time_slot = '6:30-7:00' THEN '8:00-8:30'
+    WHEN time_slot = '7:00-7:30' THEN '8:30-9:00'
+    WHEN time_slot = '7:30-8:00' THEN '9:00-9:30'
+    -- Keep existing valid time slots as-is
+    WHEN time_slot IN ('8:00-8:30', '8:30-9:00', '9:00-9:30', '9:30-10:00', '10:00-10:30', '10:30-11:00', 
+                       '11:00-11:30', '11:30-12:00', '12:00-12:30', '12:30-13:00', '13:00-13:30', '13:30-14:00',
+                       '14:00-14:30', '14:30-15:00', '15:00-15:30', '15:30-16:00', '16:00-16:30', '16:30-17:00',
+                       '17:00-17:30', '17:30-18:00', '18:00-18:30', '18:30-19:00', '19:00-19:30', '19:30-20:00',
+                       '20:00-20:30', '20:30-21:00', '21:00-21:30', '21:30-22:00')
+    THEN time_slot
+    -- Handle any other invalid time slots by setting to a default valid time
+    ELSE '8:00-8:30'
+END;
+
+-- 4. Add foreign key constraint to reference time_slots table
+ALTER TABLE student_schedules 
+DROP CONSTRAINT IF EXISTS fk_student_schedules_time_slot;
+
+ALTER TABLE student_schedules
+ADD CONSTRAINT fk_student_schedules_time_slot 
+FOREIGN KEY (time_slot) REFERENCES time_slots(time_slot);
+
+-- 3. Update database week start functions to ensure Monday start
+CREATE OR REPLACE FUNCTION get_current_week_start()
+RETURNS DATE AS $$
+BEGIN
+  -- Ensure Monday start: DATE_TRUNC('week', date) returns Monday of the week
+  RETURN DATE_TRUNC('week', CURRENT_DATE);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION get_week_start(input_date DATE)
+RETURNS DATE AS $$
+BEGIN
+  -- Ensure Monday start: DATE_TRUNC('week', date) returns Monday of the week
+  RETURN DATE_TRUNC('week', input_date);
+END;
+$$ LANGUAGE plpgsql;
+
+-- 4. Migrate existing day_of_week values from Sunday=0 to Monday=0
+-- Current: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
+-- Target:  0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday, 5=Saturday, 6=Sunday
+-- Formula: new = (old + 6) % 7
+UPDATE student_schedules 
+SET day_of_week = (day_of_week + 6) % 7;
+
+-- 5. Update table comment to reflect Monday=0 mapping
+COMMENT ON COLUMN student_schedules.day_of_week IS 'Day of week: 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday, 5=Saturday, 6=Sunday';
+
+-- 6. Recreate views with Monday=0 mapping
+DROP VIEW IF EXISTS weekly_schedule CASCADE;
+CREATE VIEW weekly_schedule AS
+SELECT 
+    ss.id,
+    s.name as student_name,
+    t.name as teacher_name,
+    ss.day_of_week,
+    ss.time_slot,
+    ss.week_start_date,
+    CASE ss.day_of_week
+        WHEN 0 THEN 'Monday'    -- 0 = Monday (CORRECT)
+        WHEN 1 THEN 'Tuesday'   -- 1 = Tuesday (CORRECT)
+        WHEN 2 THEN 'Wednesday' -- 2 = Wednesday (CORRECT)
+        WHEN 3 THEN 'Thursday'  -- 3 = Thursday (CORRECT)
+        WHEN 4 THEN 'Friday'    -- 4 = Friday (CORRECT)
+        WHEN 5 THEN 'Saturday'  -- 5 = Saturday (CORRECT)
+        WHEN 6 THEN 'Sunday'    -- 6 = Sunday (CORRECT)
+    END as day_name
+FROM student_schedules ss
+JOIN students s ON ss.student_id = s.id
+JOIN teachers t ON ss.teacher_id = t.id
+WHERE s.is_active = true;
+
+-- 7. Recreate lesson_statistics view
+DROP VIEW IF EXISTS lesson_statistics CASCADE;
+CREATE VIEW lesson_statistics AS
+SELECT 
+    s.id as student_id,
+    s.name as student_name,
+    t.name as teacher_name,
+    COUNT(ss.id) as total_lessons_scheduled,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent_warned' THEN 1 END) as absent_warned_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'scheduled' THEN 1 END) as pending_lessons,
+    COUNT(sl.id) as total_lessons_taken_ever,
+    s.lessons_per_week,
+    s.added_date,
+    ROUND(
+        (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
+         NULLIF(COUNT(ss.id), 0)) * 100, 2
+    ) as attendance_percentage
+FROM students s
+LEFT JOIN teachers t ON s.teacher_id = t.id
+LEFT JOIN student_schedules ss ON s.id = ss.student_id
+LEFT JOIN student_lessons sl ON s.id = sl.student_id
+WHERE s.is_active = true
+GROUP BY s.id, s.name, t.name, s.lessons_per_week, s.added_date;
+
+-- 8. Recreate teacher_monthly_stats view
+DROP VIEW IF EXISTS teacher_monthly_stats CASCADE;
+CREATE VIEW teacher_monthly_stats AS
+SELECT 
+    t.id as teacher_id,
+    t.name as teacher_name,
+    t.email as teacher_email,
+    DATE_TRUNC('month', ss.attendance_date) as month_year,
+    EXTRACT(YEAR FROM ss.attendance_date) as year,
+    EXTRACT(MONTH FROM ss.attendance_date) as month,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent_warned' THEN 1 END) as absent_warned_lessons,
+    COUNT(ss.id) as total_lessons,
+    ROUND(
+        (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
+         NULLIF(COUNT(ss.id), 0)) * 100, 2
+    ) as attendance_percentage,
+    COUNT(DISTINCT s.id) as unique_students_taught
+FROM teachers t
+LEFT JOIN student_schedules ss ON t.id = ss.teacher_id 
+    AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
+    AND ss.attendance_date IS NOT NULL
+LEFT JOIN students s ON ss.student_id = s.id AND s.is_active = true
+WHERE t.is_active = true
+GROUP BY t.id, t.name, t.email, DATE_TRUNC('month', ss.attendance_date), 
+         EXTRACT(YEAR FROM ss.attendance_date), EXTRACT(MONTH FROM ss.attendance_date)
+ORDER BY t.id, month_year DESC;
+
+-- 9. Time slots already migrated above
+
+-- 10. Verify the migration
+SELECT 
+    'Day of week distribution after migration' as check_type,
+    day_of_week,
+    CASE day_of_week
+        WHEN 0 THEN 'Monday (should be 0)'
+        WHEN 1 THEN 'Tuesday (should be 1)'
+        WHEN 2 THEN 'Wednesday (should be 2)'
+        WHEN 3 THEN 'Thursday (should be 3)'
+        WHEN 4 THEN 'Friday (should be 4)'
+        WHEN 5 THEN 'Saturday (should be 5)'
+        WHEN 6 THEN 'Sunday (should be 6)'
+    END as day_name,
+    COUNT(*) as count
+FROM student_schedules 
+GROUP BY day_of_week 
+ORDER BY day_of_week;
+
+COMMIT;

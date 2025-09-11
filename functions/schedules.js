@@ -180,50 +180,58 @@ async function createSchedule(event, user) {
 
     await client.query('BEGIN')
 
-    // 1. Get student's lessons_per_week
-    const studentQuery = await client.query('SELECT lessons_per_week FROM students WHERE id = $1', [student_id])
+    // 1. Get student's lessons_per_week and validate teacher-student relationship
+    const studentQuery = await client.query('SELECT lessons_per_week, primary_teacher_id FROM students WHERE id = $1', [student_id])
     if (studentQuery.rows.length === 0) {
       await client.query('ROLLBACK')
       return errorResponse(404, 'Student not found')
     }
     const lessonsPerWeek = studentQuery.rows[0].lessons_per_week
+    const primaryTeacherId = studentQuery.rows[0].primary_teacher_id
 
-    // 2. Handle 0 lessons case
-    if (lessonsPerWeek === 0) {
-      await client.query('ROLLBACK')
-      return successResponse({ message: 'Student has no lessons scheduled' })
-    }
+    // 2. Note: Removed teacher-student relationship validation
+    // In the multi-teacher system, any teacher can add any student to their schedule
+    // The student_teachers table tracks assignments, but doesn't restrict scheduling
 
-    // 3. Check for conflicts
-    await checkSchedulingConflicts(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, lessonsPerWeek)
+    // 3. Note: Removed 0 lessons check since lessons_per_week is now dynamic
+    // Students can be scheduled regardless of their current lessons_per_week value
 
-    // 4. Create multiple lessons based on lessons_per_week
+    // 4. Check for conflicts
+    await checkSchedulingConflicts(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 1)
+
+    // 5. Create multiple lessons based on lessons_per_week
     const createdSchedules = await createMultipleLessons(
-      client, student_id, teacher_id, day_of_week, time_slot, week_start_date, lessonsPerWeek
+      client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 1
     )
 
-    // 5. Create/update schedule template
-    const templateResult = await createScheduleTemplate(
-      client, student_id, teacher_id, day_of_week, time_slot, lessonsPerWeek, week_start_date
+    // 6. Create/update schedule template
+    console.log('🔍 [CREATE_SCHEDULE] Creating schedule template...')
+    const templateResult = await createScheduleTemplateInternal(
+      client, student_id, teacher_id, day_of_week, time_slot, 1, week_start_date
     )
+    console.log('🔍 [CREATE_SCHEDULE] Template result:', templateResult)
 
-    // 6. Link schedules to template
-    if (templateResult.rows.length > 0) {
+    // 7. Link schedules to template
+    if (templateResult && templateResult.rows && templateResult.rows.length > 0) {
       const templateId = templateResult.rows[0].id
       await client.query(
         'UPDATE student_schedules SET template_id = $1 WHERE student_id = $2 AND teacher_id = $3 AND week_start_date = $4',
         [templateId, student_id, teacher_id, week_start_date]
       )
+      
+      // 8. Generate recurring schedules for future weeks (next 12 weeks)
+      console.log('🔍 [CREATE_SCHEDULE] Generating recurring schedules for future weeks...')
+      await generateRecurringSchedules(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 12)
     }
 
     // 7. Log in schedule_history
     try {
       for (const schedule of createdSchedules) {
         await client.query(
-          `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
+        `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
            VALUES ($1, 'created', NULL, $2, $3, 'Created multiple lessons via API')`,
           [schedule.id, teacher_id, user.userId]
-        )
+      )
       }
     } catch (e) {
       // history table may not exist yet; ignore
@@ -232,7 +240,7 @@ async function createSchedule(event, user) {
     await client.query('COMMIT')
     return successResponse({ 
       schedules: createdSchedules,
-      total_lessons: lessonsPerWeek,
+      total_lessons: 1,
       template: templateResult.rows[0]
     }, 201)
   } catch (error) {
@@ -353,7 +361,7 @@ async function getStudentAttendanceAnalytics(event, user) {
         COUNT(*) FILTER (WHERE attendance_status='completed') AS completed,
         COUNT(*) FILTER (WHERE attendance_status='absent') AS absent,
         COUNT(*) FILTER (WHERE attendance_status='absent_warned') AS warned,
-        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent')) AS total
+        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent','absent_warned')) AS total
       FROM student_schedules
       WHERE student_id = $2
         AND attendance_date BETWEEN $3 AND $4
@@ -382,7 +390,7 @@ async function getTeacherAttendanceAnalytics(event, user) {
         COUNT(*) FILTER (WHERE attendance_status='completed') AS completed,
         COUNT(*) FILTER (WHERE attendance_status='absent') AS absent,
         COUNT(*) FILTER (WHERE attendance_status='absent_warned') AS warned,
-        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent')) AS total
+        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent','absent_warned')) AS total
       FROM student_schedules
       WHERE teacher_id = $2
         AND attendance_date BETWEEN $3 AND $4
@@ -410,7 +418,7 @@ async function getMyTeacherAttendanceAnalytics(event, user) {
         COUNT(*) FILTER (WHERE attendance_status='completed') AS completed,
         COUNT(*) FILTER (WHERE attendance_status='absent') AS absent,
         COUNT(*) FILTER (WHERE attendance_status='absent_warned') AS warned,
-        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent')) AS total
+        COUNT(*) FILTER (WHERE attendance_status IN ('completed','absent','absent_warned')) AS total
       FROM student_schedules
       WHERE teacher_id = $2
         AND attendance_date BETWEEN $3 AND $4
@@ -428,31 +436,56 @@ async function getMyTeacherAttendanceAnalytics(event, user) {
 async function createMultipleLessons(client, studentId, teacherId, dayOfWeek, timeSlot, weekStart, lessonsPerWeek) {
   const createdSchedules = []
   
-  if (lessonsPerWeek === 1) {
-    // Single lesson - current logic
-    const schedule = await createSingleLesson(client, studentId, teacherId, dayOfWeek, timeSlot, weekStart)
-    createdSchedules.push(schedule)
-  } else if (lessonsPerWeek <= 3) {
-    // 2-3 lessons: sequential time slots on same day
-    const timeSlots = await getSequentialTimeSlots(client, timeSlot, lessonsPerWeek)
-    for (let i = 0; i < lessonsPerWeek; i++) {
-      const schedule = await createSingleLesson(client, studentId, teacherId, dayOfWeek, timeSlots[i], weekStart)
+  try {
+    if (lessonsPerWeek === 1) {
+      // Single lesson - current logic
+      const schedule = await createSingleLesson(client, studentId, teacherId, dayOfWeek, timeSlot, weekStart)
       createdSchedules.push(schedule)
+    } else if (lessonsPerWeek <= 3) {
+      // 2-3 lessons: sequential time slots on same day
+      const timeSlots = await getSequentialTimeSlots(client, timeSlot, lessonsPerWeek)
+      console.log('🔍 [CREATE_MULTIPLE] Time slots:', timeSlots)
+      
+      if (!timeSlots || timeSlots.length === 0) {
+        throw new Error('No time slots available for sequential scheduling')
+      }
+      
+      for (let i = 0; i < lessonsPerWeek; i++) {
+        if (timeSlots[i]) {
+          const schedule = await createSingleLesson(client, studentId, teacherId, dayOfWeek, timeSlots[i], weekStart)
+          createdSchedules.push(schedule)
+        }
+      }
+    } else if (lessonsPerWeek <= 7) {
+      // 4-7 lessons: spread across 2-3 days
+      const distribution = await getSpreadDistribution(client, dayOfWeek, lessonsPerWeek)
+      console.log('🔍 [CREATE_MULTIPLE] Distribution:', distribution)
+      
+      if (!distribution || distribution.length === 0) {
+        throw new Error('No distribution available for spread scheduling')
+      }
+      
+      for (const { day, time } of distribution) {
+        const schedule = await createSingleLesson(client, studentId, teacherId, day, time, weekStart)
+        createdSchedules.push(schedule)
+      }
+    } else {
+      // 8+ lessons: intensive schedule across multiple days
+      const distribution = await getIntensiveDistribution(client, dayOfWeek, lessonsPerWeek)
+      console.log('🔍 [CREATE_MULTIPLE] Intensive distribution:', distribution)
+      
+      if (!distribution || distribution.length === 0) {
+        throw new Error('No distribution available for intensive scheduling')
+      }
+      
+      for (const { day, time } of distribution) {
+        const schedule = await createSingleLesson(client, studentId, teacherId, day, time, weekStart)
+        createdSchedules.push(schedule)
+      }
     }
-  } else if (lessonsPerWeek <= 7) {
-    // 4-7 lessons: spread across 2-3 days
-    const distribution = await getSpreadDistribution(client, dayOfWeek, lessonsPerWeek)
-    for (const { day, time } of distribution) {
-      const schedule = await createSingleLesson(client, studentId, teacherId, day, time, weekStart)
-      createdSchedules.push(schedule)
-    }
-  } else {
-    // 8+ lessons: intensive schedule across multiple days
-    const distribution = await getIntensiveDistribution(client, dayOfWeek, lessonsPerWeek)
-    for (const { day, time } of distribution) {
-      const schedule = await createSingleLesson(client, studentId, teacherId, day, time, weekStart)
-      createdSchedules.push(schedule)
-    }
+  } catch (error) {
+    console.error('❌ [CREATE_MULTIPLE] Error creating multiple lessons:', error)
+    throw error
   }
   
   return createdSchedules
@@ -460,14 +493,28 @@ async function createMultipleLessons(client, studentId, teacherId, dayOfWeek, ti
 
 // Create a single lesson entry
 async function createSingleLesson(client, studentId, teacherId, dayOfWeek, timeSlot, weekStart) {
+  // Ensure weekStart is a Monday by using database function
+  const weekStartResult = await client.query(
+    'SELECT get_week_start($1) as monday_week_start',
+    [weekStart]
+  )
+  const mondayWeekStart = weekStartResult.rows[0].monday_week_start
+
+  // Get student's primary teacher
+  const primaryTeacherQuery = await client.query(`
+    SELECT primary_teacher_id FROM students WHERE id = $1
+  `, [studentId])
+  
+  const primaryTeacherId = primaryTeacherQuery.rows[0]?.primary_teacher_id || null
+
   const scheduleQuery = `
-    INSERT INTO student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date, lesson_type)
-    VALUES ($1, $2, $3, $4, $5, 'scheduled')
+    INSERT INTO student_schedules (student_id, teacher_id, primary_teacher_id, day_of_week, time_slot, week_start_date, lesson_type)
+    VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
     RETURNING *
   `
   
   const result = await client.query(scheduleQuery, [
-    studentId, teacherId, dayOfWeek, timeSlot, weekStart
+    studentId, teacherId, primaryTeacherId, dayOfWeek, timeSlot, mondayWeekStart
   ])
   
   return result.rows[0]
@@ -539,12 +586,11 @@ async function checkSchedulingConflicts(client, studentId, teacherId, dayOfWeek,
     [studentId, weekStart]
   )
   
-  if (parseInt(existingLessons.rows[0].count) > 0) {
-    throw new Error('Student already has lessons scheduled this week')
-  }
+  const existingCount = parseInt(existingLessons.rows[0].count)
+  console.log('🔍 [CONFLICT_CHECK] Existing lessons this week:', existingCount, 'Requested:', lessonsPerWeek)
   
-  // 2. Validate lessons per week limit
-  await validateLessonsPerWeek(client, studentId, weekStart, lessonsPerWeek)
+  // 2. Note: Removed lessons_per_week validation - allow unlimited scheduling
+  console.log('🔍 [CONFLICT_CHECK] Skipping lessons_per_week validation - allowing unlimited scheduling')
   
   // 3. Check for teacher double-booking
   await validateNoDoubleBooking(client, teacherId, dayOfWeek, timeSlot, weekStart)
@@ -560,25 +606,7 @@ async function checkSchedulingConflicts(client, studentId, teacherId, dayOfWeek,
   }
 }
 
-// Helper function to validate lessons per week limit
-async function validateLessonsPerWeek(client, studentId, weekStart, requestedLessons) {
-  const existingCount = await client.query(
-    'SELECT COUNT(*) FROM student_schedules WHERE student_id = $1 AND week_start_date = $2',
-    [studentId, weekStart]
-  )
-  
-  const studentQuery = await client.query(
-    'SELECT lessons_per_week FROM students WHERE id = $1',
-    [studentId]
-  )
-  
-  const maxLessons = studentQuery.rows[0].lessons_per_week
-  const currentCount = parseInt(existingCount.rows[0].count)
-  
-  if (currentCount + requestedLessons > maxLessons) {
-    throw new Error(`Cannot schedule ${requestedLessons} lessons. Student limit is ${maxLessons}, already has ${currentCount}`)
-  }
-}
+// Note: validateLessonsPerWeek function removed - no more lesson limits
 
 // Helper function to validate no double-booking
 async function validateNoDoubleBooking(client, teacherId, dayOfWeek, timeSlot, weekStart) {
@@ -592,22 +620,75 @@ async function validateNoDoubleBooking(client, teacherId, dayOfWeek, timeSlot, w
   }
 }
 
-// Create or update schedule template
-async function createScheduleTemplate(client, studentId, teacherId, dayOfWeek, timeSlot, lessonsPerWeek, weekStart) {
-  const templateQuery = `
-    INSERT INTO schedule_templates (student_id, teacher_id, day_of_week, time_slot, lessons_per_week, start_date, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6, true)
-    ON CONFLICT (student_id, teacher_id, day_of_week, time_slot, start_date) 
-    DO UPDATE SET 
-      lessons_per_week = EXCLUDED.lessons_per_week,
-      is_active = EXCLUDED.is_active,
-      updated_at = CURRENT_TIMESTAMP
-    RETURNING *
-  `
-  
-  return await client.query(templateQuery, [
-    studentId, teacherId, dayOfWeek, timeSlot, lessonsPerWeek, weekStart
-  ])
+// Create or update schedule template (internal function)
+async function createScheduleTemplateInternal(client, studentId, teacherId, dayOfWeek, timeSlot, lessonsPerWeek, weekStart) {
+  try {
+    console.log('🔍 [CREATE_TEMPLATE] Creating template with params:', {
+      studentId, teacherId, dayOfWeek, timeSlot, lessonsPerWeek, weekStart
+    })
+    
+    const templateQuery = `
+      INSERT INTO schedule_templates (student_id, teacher_id, day_of_week, time_slot, lessons_per_week, start_date, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, true)
+      ON CONFLICT (student_id, teacher_id, day_of_week, time_slot, start_date) 
+      DO UPDATE SET 
+        lessons_per_week = EXCLUDED.lessons_per_week,
+        is_active = EXCLUDED.is_active,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `
+    
+    const result = await client.query(templateQuery, [
+      studentId, teacherId, dayOfWeek, timeSlot, lessonsPerWeek, weekStart
+    ])
+    
+    console.log('✅ [CREATE_TEMPLATE] Template created successfully:', result.rows)
+    return result
+  } catch (error) {
+    console.error('❌ [CREATE_TEMPLATE] Error creating template:', error)
+    throw error
+  }
+}
+
+// Generate recurring schedules for future weeks
+async function generateRecurringSchedules(client, studentId, teacherId, dayOfWeek, timeSlot, startWeek, weeksToGenerate) {
+  try {
+    console.log('🔍 [RECURRING] Generating recurring schedules:', {
+      studentId, teacherId, dayOfWeek, timeSlot, startWeek, weeksToGenerate
+    })
+    
+    let generatedCount = 0
+    
+    for (let i = 1; i <= weeksToGenerate; i++) {
+      // Calculate next week start date using database function to ensure Monday
+      const nextWeekResult = await client.query(
+        'SELECT get_week_start($1 + INTERVAL \'7 days\' * $2) as week_start',
+        [startWeek, i]
+      )
+      const nextWeekStart = nextWeekResult.rows[0].week_start
+      
+      // Check if schedule already exists for this week
+      const existingCheck = await client.query(
+        'SELECT id FROM student_schedules WHERE student_id = $1 AND teacher_id = $2 AND day_of_week = $3 AND time_slot = $4 AND week_start_date = $5',
+        [studentId, teacherId, dayOfWeek, timeSlot, nextWeekStart]
+      )
+      
+      if (existingCheck.rows.length === 0) {
+        // Create recurring schedule for this week
+        await client.query(
+          `INSERT INTO student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date, is_recurring, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          [studentId, teacherId, dayOfWeek, timeSlot, nextWeekStart]
+        )
+        generatedCount++
+      }
+    }
+    
+    console.log(`✅ [RECURRING] Generated ${generatedCount} recurring schedules for next ${weeksToGenerate} weeks`)
+  } catch (error) {
+    console.error('❌ [RECURRING] Error generating recurring schedules:', error)
+    throw error
+  }
 }
 
 // Enhanced deleteSchedule function with past/future logic
@@ -639,15 +720,26 @@ async function deleteSchedule(event, user) {
       const isPastLesson = schedule.week_start_date < currentDate
       
       if (isPastLesson) {
-        // Past lesson: Only mark as cancelled, don't delete
+        // Past lesson: Mark as cancelled and log to history table
         await client.query(
           'UPDATE student_schedules SET lesson_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
           ['cancelled', scheduleId]
         )
         
+        // Log to schedule_history for audit trail
+        try {
+          await client.query(
+            `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
+             VALUES ($1, 'cancelled', $2, NULL, $3, 'Past lesson marked as cancelled - preserved for historical records')`,
+            [scheduleId, schedule.teacher_id, user.userId]
+          )
+        } catch (e) {
+          console.log('Note: schedule_history table may not exist yet')
+        }
+        
         await client.query('COMMIT')
         return successResponse({ 
-          message: 'Past lesson marked as cancelled (preserved for history)',
+          message: 'Past lesson marked as cancelled (preserved for historical records)',
           action: 'marked_cancelled'
         })
       } else {
@@ -983,8 +1075,15 @@ async function saveWeekSchedule(event, user) {
     try {
       await client.query('BEGIN')
 
+      // Ensure week_start_date is a Monday using database function
+      const weekStartResult = await client.query(
+        'SELECT get_week_start($1) as monday_week_start',
+        [week_start_date]
+      )
+      const mondayWeekStart = weekStartResult.rows[0].monday_week_start
+
       // Delete existing schedules for the week
-      await client.query('DELETE FROM student_schedules WHERE week_start_date = $1', [week_start_date])
+      await client.query('DELETE FROM student_schedules WHERE week_start_date = $1', [mondayWeekStart])
 
       // Insert new schedules
       for (const schedule of schedules) {
@@ -993,7 +1092,7 @@ async function saveWeekSchedule(event, user) {
         await client.query(
           `INSERT INTO student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date, attendance_status)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [student_id, teacher_id, day_of_week, time_slot, week_start_date, attendance_status || 'scheduled']
+          [student_id, teacher_id, day_of_week, time_slot, mondayWeekStart, attendance_status || 'scheduled']
         )
       }
 
