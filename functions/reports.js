@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool  } = require('./utils/database.js')
+const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool, getWeekStart  } = require('./utils/database.js')
 
 exports.handler = async (event, context) => {
   // Handle CORS preflight
@@ -259,12 +259,9 @@ async function createReport(event, user) {
       console.log('✅ [REPORTS] Teacher permissions verified')
     }
 
-    // Calculate week start date for consistent key generation
-    const weekStartDate = getWeekStart(lesson_date)
-    
     const queryText = `
-      INSERT INTO lesson_reports (teacher_id, student_id, lesson_date, time_slot, comment, week_start_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO lesson_reports (teacher_id, student_id, lesson_date, time_slot, comment)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `
     
@@ -276,11 +273,10 @@ async function createReport(event, user) {
       teacherId,
       studentId: student_id,
       lessonDate: lesson_date,
-      timeSlot: time_slot,
-      weekStartDate: weekStartDate
+      timeSlot: time_slot
     })
 
-    const result = await query(queryText, [teacherId, student_id, lesson_date, time_slot, comment || null, weekStartDate])
+    const result = await query(queryText, [teacherId, student_id, lesson_date, time_slot, comment || null])
     
     console.log('✅ [REPORTS] Report created successfully', {
       reportId: result.rows[0].id,
@@ -903,10 +899,4 @@ async function exportReports(event, user) {
   }
 }
 
-// Helper function to get week start date
-function getWeekStart(date) {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
-  return new Date(d.setDate(diff)).toISOString().split('T')[0]
-}
+// getWeekStart function is now imported from utils/database.js

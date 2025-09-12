@@ -54,58 +54,122 @@ exports.handler = async (event, context) => {
   }
 }
 
-// Get attendance records
+// REWRITTEN getAttendance function - Use upcoming_schedule_view for active records
 async function getAttendance(event, user) {
   try {
-    const { teacher_id, student_id, status, date_from, date_to, page, limit } = event.queryStringParameters || {}
+    const { teacher_id, student_id, status, date_from, date_to, page, limit, include_history = 'false' } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
-    let queryText = `
-      SELECT ss.*, s.name as student_name, t.name as teacher_name
-      FROM student_schedules ss
-      JOIN students s ON ss.student_id = s.id
-      JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
-        AND s.is_active = true
-        AND t.is_active = true
-    `
+    let queryText
     let params = []
     let paramCount = 0
 
-    // Add filters
-    if (teacher_id) {
-      queryText += ` AND ss.teacher_id = $${++paramCount}`
-      params.push(teacher_id)
-    }
+    // For future calendar queries, show only current and future weeks
+    if (include_history !== 'true') {
+      queryText = `
+        SELECT 
+          ss.id, s.id as student_id, s.name as student_name, 
+          t.id as teacher_id, t.name as teacher_name,
+          ss.day_of_week, ss.time_slot, ss.week_start_date,
+          ss.attendance_status, ss.lesson_type,
+          CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+               WHEN ss.attendance_status = 'absent' THEN 'absent'
+               WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+               ELSE 'scheduled'
+          END as status
+        FROM student_schedules ss
+        JOIN students s ON ss.student_id = s.id
+        JOIN teachers t ON ss.teacher_id = t.id
+        WHERE ss.week_start_date >= get_current_week_start()
+        AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
+      `
 
-    if (student_id) {
-      queryText += ` AND ss.student_id = $${++paramCount}`
-      params.push(student_id)
-    }
+      // Add filters for upcoming_schedule_view
+      if (teacher_id) {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(teacher_id)
+      }
 
-    if (status) {
-      queryText += ` AND ss.attendance_status = $${++paramCount}`
-      params.push(status)
-    }
+      if (student_id) {
+        queryText += ` AND ss.student_id = $${++paramCount}`
+        params.push(student_id)
+      }
 
-    if (date_from) {
-      queryText += ` AND ss.attendance_date >= $${++paramCount}`
-      params.push(date_from)
-    }
+      if (status) {
+        queryText += ` AND ss.attendance_status = $${++paramCount}`
+        params.push(status)
+      }
 
-    if (date_to) {
-      queryText += ` AND ss.attendance_date <= $${++paramCount}`
-      params.push(date_to)
-    }
+      if (date_from) {
+        queryText += ` AND ss.week_start_date >= $${++paramCount}`
+        params.push(date_from)
+      }
 
-    // Filter by teacher if user is a teacher
-    if (user.role === 'teacher') {
-      queryText += ` AND ss.teacher_id = $${++paramCount}`
-      params.push(user.teacherId)
-    }
+      if (date_to) {
+        queryText += ` AND ss.week_start_date <= $${++paramCount}`
+        params.push(date_to)
+      }
 
-    queryText += ` ORDER BY ss.attendance_date DESC, ss.time_slot LIMIT $${++paramCount} OFFSET $${++paramCount}`
-    params.push(limit, offset)
+      // Filter by teacher if user is a teacher
+      if (user.role === 'teacher') {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(user.teacherId)
+      }
+
+      queryText += ` ORDER BY ss.week_start_date DESC, ss.time_slot LIMIT $${++paramCount} OFFSET $${++paramCount}`
+      params.push(limit, offset)
+    } else {
+      // For historical queries, use student_schedules with is_active filter
+      queryText = `
+        SELECT ss.*, s.name as student_name, t.name as teacher_name,
+               CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                    WHEN ss.attendance_status = 'absent' THEN 'absent'
+                    WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                    ELSE 'scheduled'
+               END as status
+        FROM student_schedules ss
+        JOIN students s ON ss.student_id = s.id
+        JOIN teachers t ON ss.teacher_id = t.id
+        WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
+          AND s.is_active = true
+          AND t.is_active = true
+      `
+
+      // Add filters for historical data
+      if (teacher_id) {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(teacher_id)
+      }
+
+      if (student_id) {
+        queryText += ` AND ss.student_id = $${++paramCount}`
+        params.push(student_id)
+      }
+
+      if (status) {
+        queryText += ` AND ss.attendance_status = $${++paramCount}`
+        params.push(status)
+      }
+
+      if (date_from) {
+        queryText += ` AND ss.attendance_date >= $${++paramCount}`
+        params.push(date_from)
+      }
+
+      if (date_to) {
+        queryText += ` AND ss.attendance_date <= $${++paramCount}`
+        params.push(date_to)
+      }
+
+      // Filter by teacher if user is a teacher
+      if (user.role === 'teacher') {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(user.teacherId)
+      }
+
+      queryText += ` ORDER BY ss.attendance_date DESC, ss.time_slot LIMIT $${++paramCount} OFFSET $${++paramCount}`
+      params.push(limit, offset)
+    }
 
     const result = await query(queryText, params)
     return successResponse({ attendance: result.rows })
@@ -115,7 +179,7 @@ async function getAttendance(event, user) {
   }
 }
 
-// Mark lesson attendance
+// REWRITTEN markAttendance function - Use mark_schedule_completed for completion
 async function markAttendance(event, user) {
   const client = await getPool().connect()
   
@@ -134,7 +198,7 @@ async function markAttendance(event, user) {
 
     // Check permissions and get schedule details
     const scheduleCheck = await client.query(
-      'SELECT teacher_id, student_id, time_slot FROM student_schedules WHERE id = $1',
+      'SELECT teacher_id, student_id, time_slot, is_active FROM student_schedules WHERE id = $1',
       [schedule_id]
     )
 
@@ -151,68 +215,71 @@ async function markAttendance(event, user) {
       return errorResponse(403, 'Forbidden')
     }
 
-    const attendanceDate = attendance_date || new Date().toISOString().split('T')[0]
-
-    // Update attendance status
-    const queryText = `
-      UPDATE student_schedules 
-      SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $3
-      RETURNING *
-    `
-    
-    const result = await client.query(queryText, [status, attendanceDate, schedule_id])
-    
-    // If marking as completed, add to student_lessons
-    if (status === 'completed') {
-      await client.query(
-        'INSERT INTO student_lessons (student_id, lesson_date, time_slot) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-        [schedule.student_id, attendanceDate, schedule.time_slot]
-      )
+    // Check if schedule is active
+    if (!schedule.is_active) {
+      await client.query('ROLLBACK')
+      return errorResponse(400, 'Cannot mark attendance for inactive schedule')
     }
 
-    // Check for consecutive absences and auto-warn if needed
-    if (status === 'absent') {
-      const consecutiveAbsences = await client.query(
-        `SELECT COUNT(*) as consecutive_count
-         FROM student_schedules 
-         WHERE student_id = $1 
-           AND attendance_status = 'absent' 
-           AND attendance_date >= $2::date - INTERVAL '7 days'
-           AND attendance_date <= $2::date
-         ORDER BY attendance_date DESC`,
-        [schedule.student_id, attendanceDate]
-      )
+    const attendanceDate = attendance_date || new Date().toISOString().split('T')[0]
 
-      const consecutiveCount = parseInt(consecutiveAbsences.rows[0].consecutive_count)
+    if (status === 'completed') {
+      // Use atomic database function for completion (idempotent)
+      await client.query('SELECT mark_schedule_completed($1, $2)', [schedule_id, user.userId])
+    } else {
+      // Safe update for absent/warned (consistency trigger handles lesson_type)
+      const queryText = `
+        UPDATE student_schedules 
+        SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3 AND is_active = TRUE
+        RETURNING *
+      `
       
-      // If 2+ consecutive absences, auto-update to absent_warned
-      if (consecutiveCount >= 2) {
-        await client.query(
-          `UPDATE student_schedules 
-           SET attendance_status = 'absent_warned', updated_at = CURRENT_TIMESTAMP
+      const result = await client.query(queryText, [status, attendanceDate, schedule_id])
+      
+      // Check for consecutive absences and auto-warn if needed
+      if (status === 'absent') {
+        const consecutiveAbsences = await client.query(
+          `SELECT COUNT(*) as consecutive_count
+           FROM student_schedules 
            WHERE student_id = $1 
              AND attendance_status = 'absent' 
-             AND attendance_date >= $2 - INTERVAL '7 days'
-             AND attendance_date <= $2`,
+             AND attendance_date >= $2::date - INTERVAL '7 days'
+             AND attendance_date <= $2::date
+           ORDER BY attendance_date DESC`,
           [schedule.student_id, attendanceDate]
         )
 
-        // Log warning in schedule_history
-        try {
+        const consecutiveCount = parseInt(consecutiveAbsences.rows[0].consecutive_count)
+        
+        // If 2+ consecutive absences, auto-update to absent_warned
+        if (consecutiveCount >= 2) {
           await client.query(
-            `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
-             VALUES ($1, 'warning', $2, $2, $3, 'Auto-warning for consecutive absences')`,
-            [schedule_id, schedule.teacher_id, user.userId]
+            `UPDATE student_schedules 
+             SET attendance_status = 'absent_warned', updated_at = CURRENT_TIMESTAMP
+             WHERE student_id = $1 
+               AND attendance_status = 'absent' 
+               AND attendance_date >= $2 - INTERVAL '7 days'
+               AND attendance_date <= $2`,
+            [schedule.student_id, attendanceDate]
           )
-        } catch (e) {
-          // ignore if history table not present
+
+          // Log warning in schedule_history
+          try {
+            await client.query(
+              `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
+               VALUES ($1, 'warning', $2, $2, $3, 'Auto-warning for consecutive absences')`,
+              [schedule_id, schedule.teacher_id, user.userId]
+            )
+          } catch (e) {
+            // ignore if history table not present
+          }
         }
       }
     }
 
     await client.query('COMMIT')
-    return successResponse({ attendance: result.rows[0] })
+    return successResponse({ message: 'Attendance updated successfully' })
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('Mark attendance error:', error)

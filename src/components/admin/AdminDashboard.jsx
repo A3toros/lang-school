@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
+import { getCurrentWeekStart, getWeekEnd } from '../../utils/dateUtils'
 
 const AdminDashboard = () => {
   const [overview, setOverview] = useState(null)
@@ -17,11 +18,20 @@ const AdminDashboard = () => {
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0])
   const [bucket, setBucket] = useState('week')
   const [analytics, setAnalytics] = useState({ loading: false, data: [], totals: { completed: 0, absent: 0, warned: 0, total: 0 } })
+  const [recentReports, setRecentReports] = useState([])
+  const [selectedReport, setSelectedReport] = useState(null)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   useEffect(() => {
     fetchDashboardData()
     fetchTeachers()
+    fetchRecentReports()
   }, [])
+
+  // Refresh reports when date range changes
+  useEffect(() => {
+    fetchRecentReports()
+  }, [fromDate, toDate])
 
   const fetchDashboardData = async () => {
     try {
@@ -47,6 +57,35 @@ const AdminDashboard = () => {
     } catch (e) {
       console.error('Error fetching teachers', e)
     }
+  }
+
+  const fetchRecentReports = async () => {
+    try {
+      console.log('🔍 [ADMIN] Fetching reports for date range:', { fromDate, toDate })
+      const response = await apiService.getReports({
+        date_from: fromDate,
+        date_to: toDate,
+        limit: 10
+      })
+
+      console.log('🔍 [ADMIN] Reports response:', response)
+      if (response.success) {
+        setRecentReports(response.reports || [])
+        console.log('🔍 [ADMIN] Set recent reports:', response.reports?.length || 0, 'reports')
+      }
+    } catch (error) {
+      console.error('Error fetching recent reports:', error)
+    }
+  }
+
+  const handleReportClick = (report) => {
+    setSelectedReport(report)
+    setShowReportModal(true)
+  }
+
+  const closeReportModal = () => {
+    setShowReportModal(false)
+    setSelectedReport(null)
   }
 
   const fetchTeacherAnalytics = async () => {
@@ -272,6 +311,168 @@ const AdminDashboard = () => {
           ))}
         </div>
       </motion.div>
+
+      {/* Recent Lesson Reports */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.6 }}
+        className="card p-6"
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-neutral-800">Recent Lesson Reports</h3>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => {
+                const currentWeek = getCurrentWeekStart()
+                setFromDate(currentWeek)
+                setToDate(getWeekEnd(currentWeek))
+              }}
+              className="text-sm text-green-600 hover:text-green-800 font-medium"
+            >
+              Current Week
+            </button>
+            <button
+              onClick={fetchRecentReports}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div className="mb-4 text-sm text-gray-600">
+          Showing reports from {fromDate} to {toDate}
+        </div>
+        <div className="space-y-3">
+          {recentReports.length > 0 ? (
+            recentReports.map((report, index) => (
+              <motion.div 
+                key={index} 
+                className="flex items-start p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors duration-200"
+                onClick={() => handleReportClick(report)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <div className="w-2 h-2 bg-blue-500 rounded-full mr-3 mt-2"></div>
+                <div className="flex-1">
+                  <p className="text-sm text-neutral-800">
+                    <span className="font-medium">{report.teacher_name}</span> submitted report for{' '}
+                    <span className="font-medium">{report.student_name}</span>
+                  </p>
+                  <p className="text-xs text-neutral-600 mb-2">
+                    {new Date(report.lesson_date).toLocaleDateString()} at {report.time_slot}
+                  </p>
+                  {report.comment && (
+                    <div className="bg-white p-2 rounded border-l-2 border-blue-200">
+                      <p className="text-xs text-neutral-700 italic">
+                        "{report.comment.length > 100 ? report.comment.substring(0, 100) + '...' : report.comment}"
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-xs text-blue-600 mt-2 font-medium">Click to view full report →</p>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-neutral-500">
+              <p>No lesson reports found for the selected period.</p>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Report Viewer Modal */}
+      {showReportModal && selectedReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-xl font-semibold text-neutral-800">Lesson Report Details</h3>
+                <button
+                  onClick={closeReportModal}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Teacher</label>
+                    <p className="text-lg font-semibold text-neutral-800">{selectedReport.teacher_name}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Student</label>
+                    <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Lesson Date</label>
+                    <p className="text-neutral-800">{new Date(selectedReport.lesson_date).toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Time Slot</label>
+                    <p className="text-neutral-800">{selectedReport.time_slot}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Submitted At</label>
+                  <p className="text-neutral-800">{new Date(selectedReport.created_at).toLocaleString('en-US', {
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                  })}</p>
+                </div>
+                
+                {selectedReport.comment && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Teacher Comment</label>
+                    <div className="mt-2 p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+                      <p className="text-neutral-800 whitespace-pre-wrap">{selectedReport.comment}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {!selectedReport.comment && (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>No comment provided for this lesson.</p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={closeReportModal}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

@@ -6,12 +6,13 @@ import ScheduleTable from '../components/admin/ScheduleTable'
 import StudentManagement from '../components/admin/StudentManagement'
 import TeacherManagement from '../components/admin/TeacherManagement'
 import ContentManagement from '../components/admin/ContentManagement'
+import { getCurrentWeekStart } from '../utils/dateUtils'
 
 const AdminPage = () => {
   const { user, logout } = useAuth()
   const [selectedTeacher, setSelectedTeacher] = useState(null)
   const [selectedStudent, setSelectedStudent] = useState(null)
-  const [currentWeek, setCurrentWeek] = useState(new Date().toISOString().split('T')[0])
+  const [currentWeek, setCurrentWeek] = useState(getCurrentWeekStart())
   const [activeTab, setActiveTab] = useState('schedule')
 
   const handleTeacherSelect = (teacher) => {

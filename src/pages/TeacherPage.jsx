@@ -25,6 +25,10 @@ const TeacherPage = () => {
   const [showAttendanceConfirmModal, setShowAttendanceConfirmModal] = useState(false)
   const [pendingAttendance, setPendingAttendance] = useState(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [recentlySubmitted, setRecentlySubmitted] = useState(new Set())
+  const [selectedReport, setSelectedReport] = useState(null)
+  const [showReportViewModal, setShowReportViewModal] = useState(false)
+  const [recentReports, setRecentReports] = useState([])
 
   useEffect(() => {
     console.log('🔍 [TEACHER_PAGE] useEffect triggered with user:', user)
@@ -97,19 +101,28 @@ const TeacherPage = () => {
         // We need to match reports to the current week's schedule
         // Since reports can be from different weeks, we'll check if any current week lessons have reports
         const currentWeekReports = response.reports.filter(report => {
+          // Handle timezone issues by using the local date directly
           const reportDate = new Date(report.lesson_date)
-          const reportWeekStart = getWeekStart(reportDate)
+          const reportDateStr = reportDate.getFullYear() + '-' + 
+            String(reportDate.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(reportDate.getDate()).padStart(2, '0')
+          const reportWeekStart = getWeekStart(reportDateStr)
           return reportWeekStart === currentWeek
         })
         
         const reportKeys = currentWeekReports.map(report => {
-          // Use the actual lesson_date instead of currentWeek for consistent key generation
-          const reportWeekStart = getWeekStart(report.lesson_date)
+          // Use the same timezone-safe approach for key generation
+          const reportDate = new Date(report.lesson_date)
+          const reportDateStr = reportDate.getFullYear() + '-' + 
+            String(reportDate.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(reportDate.getDate()).padStart(2, '0')
+          const reportWeekStart = getWeekStart(reportDateStr)
           const key = `${report.student_id}-${reportWeekStart}-${report.time_slot}`
           console.log('🔍 [TEACHER_PAGE] Generated report key:', key, 'from report:', report)
           return key
         })
         setLessonsWithReports(new Set(reportKeys))
+        setRecentReports(currentWeekReports) // Store reports for viewing
         console.log('🔍 [TEACHER_PAGE] Loaded existing reports for current week:', reportKeys)
       } else {
         console.log('🔍 [TEACHER_PAGE] No reports found or API failed')
@@ -273,6 +286,18 @@ const TeacherPage = () => {
           return newSet
         })
         
+        // Add to recently submitted for animation effect
+        setRecentlySubmitted(prev => new Set([...prev, lessonKey]))
+        
+        // Remove from recently submitted after animation
+        setTimeout(() => {
+          setRecentlySubmitted(prev => {
+            const newSet = new Set(prev)
+            newSet.delete(lessonKey)
+            return newSet
+          })
+        }, 2000)
+        
         // Refresh the schedule to show updated status
         fetchSchedule()
         
@@ -282,7 +307,33 @@ const TeacherPage = () => {
         setSelectedStudent(null)
         setSelectedTimeSlot('')
         setPendingReport(null)
-        alert('Lesson completed and report submitted successfully')
+        
+        // Show success message with better UX
+        const successMessage = document.createElement('div')
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2 transform transition-all duration-300 ease-out'
+        successMessage.style.transform = 'translateX(100%)'
+        successMessage.innerHTML = `
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+          </svg>
+          <span>Report submitted successfully!</span>
+        `
+        document.body.appendChild(successMessage)
+        
+        // Animate in
+        setTimeout(() => {
+          successMessage.style.transform = 'translateX(0)'
+        }, 10)
+        
+        // Remove success message after 3 seconds with animation
+        setTimeout(() => {
+          successMessage.style.transform = 'translateX(100%)'
+          setTimeout(() => {
+            if (successMessage.parentNode) {
+              successMessage.parentNode.removeChild(successMessage)
+            }
+          }, 300)
+        }, 3000)
       }
     } catch (error) {
       console.error('Error submitting report:', error)
@@ -643,32 +694,82 @@ const TeacherPage = () => {
                         <td key={`${day}-${timeSlot}`} className="px-4 py-3">
                           {daySchedule.map((scheduleItem) => {
                             const status = getAttendanceStatus(scheduleItem)
-                            const lessonDate = scheduleItem.week_start_date || currentWeek
-                            // Use week start date for consistent key generation
-                            const lessonWeekStart = getWeekStart(lessonDate)
+                            // Use the current week being displayed, not the database week
+                            const lessonWeekStart = currentWeek
                             const lessonKey = `${scheduleItem.student_id}-${lessonWeekStart}-${timeSlot}`
                             const hasReport = lessonsWithReports.has(lessonKey)
+                            const isRecentlySubmitted = recentlySubmitted.has(lessonKey)
                             
                             return (
-                              <div
+                              <motion.div
                                 key={scheduleItem.id}
-                                className={`p-2 rounded-lg transition-all duration-200 ${
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ 
+                                  opacity: hasReport ? 0.7 : 1, 
+                                  scale: isRecentlySubmitted ? 1.05 : 1,
+                                  backgroundColor: hasReport ? '#f3f4f6' : undefined,
+                                  boxShadow: isRecentlySubmitted ? '0 0 20px rgba(34, 197, 94, 0.4)' : undefined
+                                }}
+                                transition={{ 
+                                  duration: 0.3, 
+                                  ease: "easeOut",
+                                  scale: { duration: 0.6, ease: "easeInOut" }
+                                }}
+                                className={`p-2 rounded-lg transition-all duration-300 ${
                                   hasReport 
-                                    ? 'bg-gray-300 cursor-not-allowed opacity-75' 
-                                    : 'cursor-pointer hover:shadow-md'
-                                } ${getStatusColor(status)}`}
-                                // Removed click handler - only Complete button opens report modal
+                                    ? 'bg-gray-100 cursor-pointer border-2 border-green-200 hover:bg-gray-200' 
+                                    : 'cursor-pointer hover:shadow-lg hover:scale-105'
+                                } ${isRecentlySubmitted ? 'ring-2 ring-green-400 ring-opacity-50' : ''} ${getStatusColor(status)}`}
+                                onClick={() => {
+                                  if (hasReport) {
+                                    // Find the report for this lesson
+                                    const report = recentReports.find(r => {
+                                      const reportDate = new Date(r.lesson_date)
+                                      const reportDateStr = reportDate.getFullYear() + '-' + 
+                                        String(reportDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                                        String(reportDate.getDate()).padStart(2, '0')
+                                      const reportWeekStart = getWeekStart(reportDateStr)
+                                      const reportKey = `${r.student_id}-${reportWeekStart}-${r.time_slot}`
+                                      return reportKey === lessonKey
+                                    })
+                                    if (report) {
+                                      setSelectedReport(report)
+                                      setShowReportViewModal(true)
+                                    }
+                                  }
+                                }}
                               >
                                 <div className="font-medium text-sm flex items-center justify-between">
-                                  <span>{scheduleItem.student_name}</span>
+                                  <span className={hasReport ? 'text-gray-500' : ''}>{scheduleItem.student_name}</span>
                                   {hasReport && (
-                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                      REPORTED
-                                    </span>
+                                    <motion.span 
+                                      initial={{ opacity: 0, scale: 0.8 }}
+                                      animate={{ 
+                                        opacity: 1, 
+                                        scale: isRecentlySubmitted ? [1, 1.1, 1] : 1,
+                                        backgroundColor: isRecentlySubmitted ? '#10b981' : '#10b981'
+                                      }}
+                                      transition={{ 
+                                        delay: 0.2, 
+                                        duration: 0.3,
+                                        scale: isRecentlySubmitted ? { 
+                                          duration: 0.8, 
+                                          repeat: 2, 
+                                          ease: "easeInOut" 
+                                        } : { duration: 0.3 }
+                                      }}
+                                      className={`text-xs text-white px-2 py-1 rounded-full font-semibold shadow-sm ${
+                                        isRecentlySubmitted ? 'animate-pulse' : ''
+                                      }`}
+                                    >
+                                      ✓ REPORTED
+                                    </motion.span>
                                   )}
                                 </div>
                                 <div className="flex space-x-1 mt-1">
-                                  <button
+                                  <motion.button
+                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
+                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
                                       if (hasReport) return
                                       e.stopPropagation()
@@ -681,52 +782,56 @@ const TeacherPage = () => {
                                       setShowReportModal(true)
                                     }}
                                     disabled={hasReport}
-                                    className={`text-xs px-2 py-1 rounded ${
+                                    className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
                                       hasReport 
-                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'completed' 
-                                          ? 'bg-green-200 text-green-800' 
-                                          : 'bg-gray-200 text-gray-600 hover:bg-green-200'
+                                          ? 'bg-green-200 text-green-800 hover:bg-green-300' 
+                                          : 'bg-gray-200 text-gray-600 hover:bg-green-200 hover:text-green-800'
                                     }`}
                                   >
                                     ✓
-                                  </button>
-                                  <button
+                                  </motion.button>
+                                  <motion.button
+                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
+                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
                                       if (hasReport) return
                                       e.stopPropagation()
                                       handleAttendanceClick(scheduleItem.id, 'absent', scheduleItem.student_name)
                                     }}
                                     disabled={hasReport}
-                                    className={`text-xs px-2 py-1 rounded ${
+                                    className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
                                       hasReport 
-                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'absent' 
-                                          ? 'bg-red-200 text-red-800' 
-                                          : 'bg-gray-200 text-gray-600 hover:bg-red-200'
+                                          ? 'bg-red-200 text-red-800 hover:bg-red-300' 
+                                          : 'bg-gray-200 text-gray-600 hover:bg-red-200 hover:text-red-800'
                                     }`}
                                   >
                                     ✗
-                                  </button>
-                                  <button
+                                  </motion.button>
+                                  <motion.button
+                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
+                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
                                       if (hasReport) return
                                       e.stopPropagation()
                                       handleAttendanceClick(scheduleItem.id, 'absent_warned', scheduleItem.student_name)
                                     }}
                                     disabled={hasReport}
-                                    className={`text-xs px-2 py-1 rounded ${
+                                    className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
                                       hasReport 
-                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'absent_warned' 
-                                          ? 'bg-orange-200 text-orange-800' 
-                                          : 'bg-gray-200 text-gray-600 hover:bg-orange-200'
+                                          ? 'bg-orange-200 text-orange-800 hover:bg-orange-300' 
+                                          : 'bg-gray-200 text-gray-600 hover:bg-orange-200 hover:text-orange-800'
                                     }`}
                                   >
                                     ⚠
-                                  </button>
+                                  </motion.button>
                                 </div>
-                              </div>
+                              </motion.div>
                             )
                           })}
                         </td>
@@ -877,6 +982,93 @@ const TeacherPage = () => {
                     }`}
                   >
                     Mark as {pendingAttendance.status.replace('_', ' ').toUpperCase()}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Report View Modal */}
+        {showReportViewModal && selectedReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-xl font-semibold text-neutral-800">Your Lesson Report</h3>
+                  <button
+                    onClick={() => setShowReportViewModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Student</label>
+                      <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Time Slot</label>
+                      <p className="text-lg font-semibold text-neutral-800">{selectedReport.time_slot}</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Lesson Date</label>
+                    <p className="text-neutral-800">{new Date(selectedReport.lesson_date).toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}</p>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">Submitted At</label>
+                    <p className="text-neutral-800">{new Date(selectedReport.created_at).toLocaleString('en-US', {
+                      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true
+                    })}</p>
+                  </div>
+                  
+                  {selectedReport.comment && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Your Comment</label>
+                      <div className="mt-2 p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+                        <p className="text-neutral-800 whitespace-pre-wrap">{selectedReport.comment}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {!selectedReport.comment && (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>No comment provided for this lesson.</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setShowReportViewModal(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                  >
+                    Close
                   </button>
                 </div>
               </div>

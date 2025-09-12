@@ -53,7 +53,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const fetchSchedule = async () => {
     try {
       setLoading(true)
-      const response = await apiService.getTeacherSchedule(teacherId, weekStart)
+    const response = await apiService.getTeacherSchedule(teacherId, weekStart)
       setSchedule(response.schedules || [])
     } catch (err) {
       setError('Failed to load schedule')
@@ -65,10 +65,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   const fetchAvailableStudents = async () => {
     try {
-      console.log('🔍 [FETCH_STUDENTS] Fetching available students for teacher:', teacherId)
-      
       if (!teacherId) {
-        console.log('❌ [FETCH_STUDENTS] No teacherId provided, skipping fetch')
         return
       }
       
@@ -85,10 +82,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       // Add all active students
       if (allStudentsResponse.success && allStudentsResponse.students) {
         availableStudentsList.push(...allStudentsResponse.students)
-        console.log('✅ [FETCH_STUDENTS] Added all students:', allStudentsResponse.students.length)
       }
-      
-      console.log('🎯 [FETCH_STUDENTS] Total available students:', availableStudentsList.length)
       setAvailableStudents(availableStudentsList)
     } catch (err) {
       console.error('Error fetching available students:', err)
@@ -383,10 +377,15 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   // Fetch lesson report for a specific schedule
   const fetchLessonReport = async (schedule) => {
     try {
+      // Calculate the actual lesson date based on week_start_date and day_of_week
+      const weekStart = new Date(schedule.week_start_date)
+      const lessonDate = new Date(weekStart)
+      lessonDate.setDate(weekStart.getDate() + (schedule.day_of_week - 1)) // day_of_week is 1-based
+      
       const response = await apiService.getReports({
         student_id: schedule.student_id,
         teacher_id: schedule.teacher_id,
-        lesson_date: schedule.week_start_date,
+        lesson_date: lessonDate.toISOString().split('T')[0], // Convert to YYYY-MM-DD format
         time_slot: schedule.time_slot
       })
       
@@ -410,16 +409,13 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   // Enhanced lesson deletion functionality
   const handleDeleteLesson = async (schedule) => {
-    console.log('🔍 [DELETE_LESSON] Called with schedule:', schedule, 'editMode:', editMode)
     const isPast = new Date(schedule.week_start_date) < new Date()
     
     if (isPast) {
-      console.log('🔍 [DELETE_LESSON] Past lesson - showing confirmation')
       // Show confirmation for past lesson cancellation
       setShowFutureLessonConfirm(true)
       setFutureLessonData(schedule)
     } else {
-      console.log('🔍 [DELETE_LESSON] Future lesson - showing confirmation')
       // Show confirmation for future lesson deletion
       setShowFutureLessonConfirm(true)
       setFutureLessonData(schedule)
@@ -431,15 +427,17 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     if (futureLessonData) {
       try {
         const response = await apiService.deleteSchedule(futureLessonData.id)
+        
         if (response.success) {
           await fetchSchedule()
-          alert('Future lessons deleted successfully')
+          alert('Lesson deleted successfully')
         } else {
-          alert('Failed to delete lessons: ' + response.error)
+          console.error('Delete failed:', response.error)
+          alert('Failed to delete lesson: ' + response.error)
         }
       } catch (err) {
-        console.error('Error deleting lessons:', err)
-        alert('Error deleting lessons: ' + err.message)
+        console.error('Exception:', err)
+        alert('Error deleting lesson: ' + err.message)
       }
       setShowFutureLessonConfirm(false)
       setFutureLessonData(null)
@@ -902,12 +900,16 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -10 }}
                               transition={{ duration: 0.2 }}
-                              onClick={editMode && isEditable ? () => handleDeleteLesson(student) : undefined}
+                              onClick={editMode && isEditable ? () => handleDeleteLesson(student) : () => fetchLessonReport(student)}
                             >
                               <div className="truncate">{student.student_name}</div>
-                              {editMode && isEditable && (
+                              {editMode && isEditable ? (
                                 <div className="mt-1 text-xs opacity-75">
                                   Click to remove
+                                </div>
+                              ) : (
+                                <div className="mt-1 text-xs opacity-75">
+                                  Click to view report
                                 </div>
                               )}
                             </motion.div>
@@ -1034,7 +1036,17 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                 <strong>Student:</strong> {lessonReportData.schedule.student_name}
               </p>
               <p className="text-sm text-gray-600 mb-2">
-                <strong>Date:</strong> {new Date(lessonReportData.schedule.week_start_date).toLocaleDateString()}
+                <strong>Date:</strong> {(() => {
+                  const weekStart = new Date(lessonReportData.schedule.week_start_date)
+                  const lessonDate = new Date(weekStart)
+                  lessonDate.setDate(weekStart.getDate() + (lessonReportData.schedule.day_of_week - 1))
+                  return lessonDate.toLocaleDateString('en-US', {
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  })
+                })()}
               </p>
               <p className="text-sm text-gray-600 mb-2">
                 <strong>Time:</strong> {lessonReportData.schedule.time_slot}
@@ -1053,7 +1065,16 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                   </p>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  Report created: {new Date(lessonReportData.report.created_at).toLocaleString()}
+                  Report created: {new Date(lessonReportData.report.created_at).toLocaleString('en-US', {
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                  })}
                 </p>
               </div>
             ) : (

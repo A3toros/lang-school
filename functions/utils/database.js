@@ -138,16 +138,24 @@ const getPaginationParams = (queryStringParameters) => {
 const getCurrentWeekStart = () => {
   const now = new Date()
   const dayOfWeek = now.getDay()
-  const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1) // Adjust when day is Sunday
-  const monday = new Date(now.setDate(diff))
+  // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
+  // Calculate days to subtract to get to Monday
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  // Use setDate to avoid timezone issues
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - daysToMonday)
   return monday.toISOString().split('T')[0]
 }
 
 const getWeekStart = (date) => {
   const d = new Date(date)
   const dayOfWeek = d.getDay()
-  const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
-  const monday = new Date(d.setDate(diff))
+  // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
+  // Calculate days to subtract to get to Monday
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  // Use setDate to avoid timezone issues
+  const monday = new Date(d)
+  monday.setDate(d.getDate() - daysToMonday)
   return monday.toISOString().split('T')[0]
 }
 

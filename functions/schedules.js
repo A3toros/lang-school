@@ -77,48 +77,103 @@ exports.handler = async (event, context) => {
   }
 }
 
-// Get schedules with filters
+// Get schedules with filters - REWRITTEN to use is_active flag and upcoming_schedule_view
 async function getSchedules(event, user) {
   try {
-    const { teacher_id, student_id, week_start, day_of_week, time_slot } = event.queryStringParameters || {}
+    const { teacher_id, student_id, week_start, day_of_week, time_slot, include_history = 'false' } = event.queryStringParameters || {}
 
-    let queryText = `
-      SELECT ss.*, s.name as student_name, t.name as teacher_name
-      FROM student_schedules ss
-      JOIN students s ON ss.student_id = s.id
-      JOIN teachers t ON ss.teacher_id = t.id
-      WHERE s.is_active = true AND t.is_active = true
-    `
+    let queryText
     let params = []
     let paramCount = 0
 
-    // Add filters
-    if (teacher_id) {
-      queryText += ` AND ss.teacher_id = $${++paramCount}`
-      params.push(teacher_id)
-    }
+    // For future calendar queries, show only current and future weeks
+    if (include_history !== 'true') {
+      queryText = `
+        SELECT ss.id, s.id as student_id, s.name as student_name, 
+               t.id as teacher_id, t.name as teacher_name,
+               ss.day_of_week, ss.time_slot, ss.week_start_date,
+               ss.attendance_status, ss.lesson_type,
+               CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                    WHEN ss.attendance_status = 'absent' THEN 'absent'
+                    WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                    ELSE 'scheduled'
+               END as status
+        FROM student_schedules ss
+        JOIN students s ON ss.student_id = s.id
+        JOIN teachers t ON ss.teacher_id = t.id
+        WHERE ss.week_start_date >= get_current_week_start()
+      `
 
-    if (student_id) {
-      queryText += ` AND ss.student_id = $${++paramCount}`
-      params.push(student_id)
-    }
+      // Add filters for student_schedules
+      if (teacher_id) {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(teacher_id)
+      }
 
-    if (week_start) {
-      queryText += ` AND ss.week_start_date = $${++paramCount}`
-      params.push(week_start)
-    }
+      if (student_id) {
+        queryText += ` AND ss.student_id = $${++paramCount}`
+        params.push(student_id)
+      }
 
-    if (day_of_week) {
-      queryText += ` AND ss.day_of_week = $${++paramCount}`
-      params.push(day_of_week)
-    }
+      if (week_start) {
+        queryText += ` AND ss.week_start_date = $${++paramCount}`
+        params.push(week_start)
+      }
 
-    if (time_slot) {
-      queryText += ` AND ss.time_slot = $${++paramCount}`
-      params.push(time_slot)
-    }
+      if (day_of_week) {
+        queryText += ` AND ss.day_of_week = $${++paramCount}`
+        params.push(day_of_week)
+      }
 
-    queryText += ` ORDER BY ss.week_start_date, ss.day_of_week, ss.time_slot`
+      if (time_slot) {
+        queryText += ` AND ss.time_slot = $${++paramCount}`
+        params.push(time_slot)
+      }
+
+      queryText += ` ORDER BY ss.week_start_date, ss.day_of_week, ss.time_slot`
+    } else {
+      // For historical queries, use student_schedules with is_active filter
+      queryText = `
+        SELECT ss.*, s.name as student_name, t.name as teacher_name,
+               CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                    WHEN ss.attendance_status = 'absent' THEN 'absent'
+                    WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                    ELSE 'scheduled'
+               END as status
+        FROM student_schedules ss
+        JOIN students s ON ss.student_id = s.id
+        JOIN teachers t ON ss.teacher_id = t.id
+        WHERE s.is_active = true AND t.is_active = true
+      `
+
+      // Add filters for historical data
+      if (teacher_id) {
+        queryText += ` AND ss.teacher_id = $${++paramCount}`
+        params.push(teacher_id)
+      }
+
+      if (student_id) {
+        queryText += ` AND ss.student_id = $${++paramCount}`
+        params.push(student_id)
+      }
+
+      if (week_start) {
+        queryText += ` AND ss.week_start_date = $${++paramCount}`
+        params.push(week_start)
+      }
+
+      if (day_of_week) {
+        queryText += ` AND ss.day_of_week = $${++paramCount}`
+        params.push(day_of_week)
+      }
+
+      if (time_slot) {
+        queryText += ` AND ss.time_slot = $${++paramCount}`
+        params.push(time_slot)
+      }
+
+      queryText += ` ORDER BY ss.week_start_date, ss.day_of_week, ss.time_slot`
+    }
 
     const result = await query(queryText, params)
     return successResponse({ schedules: result.rows })
@@ -163,7 +218,7 @@ async function getWeeklySchedule(event, user) {
   }
 }
 
-// Enhanced createSchedule function with multiple lesson support
+// REWRITTEN createSchedule function - Template-based approach with trigger
 async function createSchedule(event, user) {
   const client = await getPool().connect()
   
@@ -172,7 +227,7 @@ async function createSchedule(event, user) {
       return errorResponse(403, 'Forbidden')
     }
 
-    const { student_id, teacher_id, day_of_week, time_slot, week_start_date } = JSON.parse(event.body)
+    const { student_id, teacher_id, day_of_week, time_slot, week_start_date, end_date } = JSON.parse(event.body)
 
     if (!student_id || !teacher_id || day_of_week === undefined || !time_slot || !week_start_date) {
       return errorResponse(400, 'Missing required fields')
@@ -180,58 +235,58 @@ async function createSchedule(event, user) {
 
     await client.query('BEGIN')
 
-    // 1. Get student's lessons_per_week and validate teacher-student relationship
-    const studentQuery = await client.query('SELECT lessons_per_week, primary_teacher_id FROM students WHERE id = $1', [student_id])
+    // 1. Validate student and teacher exist and are active
+    const studentQuery = await client.query('SELECT id FROM students WHERE id = $1 AND is_active = true', [student_id])
     if (studentQuery.rows.length === 0) {
       await client.query('ROLLBACK')
-      return errorResponse(404, 'Student not found')
+      return errorResponse(404, 'Student not found or inactive')
     }
-    const lessonsPerWeek = studentQuery.rows[0].lessons_per_week
-    const primaryTeacherId = studentQuery.rows[0].primary_teacher_id
 
-    // 2. Note: Removed teacher-student relationship validation
-    // In the multi-teacher system, any teacher can add any student to their schedule
-    // The student_teachers table tracks assignments, but doesn't restrict scheduling
+    const teacherQuery = await client.query('SELECT id FROM teachers WHERE id = $1 AND is_active = true', [teacher_id])
+    if (teacherQuery.rows.length === 0) {
+      await client.query('ROLLBACK')
+      return errorResponse(404, 'Teacher not found or inactive')
+    }
 
-    // 3. Note: Removed 0 lessons check since lessons_per_week is now dynamic
-    // Students can be scheduled regardless of their current lessons_per_week value
-
-    // 4. Check for conflicts
+    // 2. Check for conflicts
     await checkSchedulingConflicts(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 1)
 
-    // 5. Create multiple lessons based on lessons_per_week
-    const createdSchedules = await createMultipleLessons(
-      client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 1
-    )
+    // 3. Create or update schedule template (trigger automatically creates 12 weeks of occurrences)
+    const templateResult = await client.query(`
+      INSERT INTO schedule_templates (
+        student_id, teacher_id, day_of_week, time_slot, 
+        lessons_per_week, start_date, end_date, is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+      ON CONFLICT (student_id, teacher_id, day_of_week, time_slot, start_date)
+      DO UPDATE SET 
+        lessons_per_week = EXCLUDED.lessons_per_week,
+        end_date = EXCLUDED.end_date,
+        is_active = EXCLUDED.is_active,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `, [student_id, teacher_id, day_of_week, time_slot, 1, week_start_date, end_date || null])
 
-    // 6. Create/update schedule template
-    console.log('🔍 [CREATE_SCHEDULE] Creating schedule template...')
-    const templateResult = await createScheduleTemplateInternal(
-      client, student_id, teacher_id, day_of_week, time_slot, 1, week_start_date
-    )
-    console.log('🔍 [CREATE_SCHEDULE] Template result:', templateResult)
+    // 4. Get generated occurrences from the trigger (or create them if updating existing template)
+    let occurrences = await client.query(`
+      SELECT * FROM student_schedules WHERE template_id = $1
+    `, [templateResult.rows[0].id])
 
-    // 7. Link schedules to template
-    if (templateResult && templateResult.rows && templateResult.rows.length > 0) {
-      const templateId = templateResult.rows[0].id
-      await client.query(
-        'UPDATE student_schedules SET template_id = $1 WHERE student_id = $2 AND teacher_id = $3 AND week_start_date = $4',
-        [templateId, student_id, teacher_id, week_start_date]
-      )
-      
-      // 8. Generate recurring schedules for future weeks (next 12 weeks)
-      console.log('🔍 [CREATE_SCHEDULE] Generating recurring schedules for future weeks...')
-      await generateRecurringSchedules(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 12)
+    // If no occurrences exist (template was updated, not inserted), create them
+    if (occurrences.rows.length === 0) {
+      await client.query('SELECT create_occurrences_from_template($1, 12)', [templateResult.rows[0].id])
+      occurrences = await client.query(`
+        SELECT * FROM student_schedules WHERE template_id = $1
+      `, [templateResult.rows[0].id])
     }
 
-    // 7. Log in schedule_history
+    // 5. Log in schedule_history
     try {
-      for (const schedule of createdSchedules) {
+      for (const schedule of occurrences.rows) {
         await client.query(
-        `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
-           VALUES ($1, 'created', NULL, $2, $3, 'Created multiple lessons via API')`,
+          `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
+           VALUES ($1, 'created', NULL, $2, $3, 'Created via template-based approach')`,
           [schedule.id, teacher_id, user.userId]
-      )
+        )
       }
     } catch (e) {
       // history table may not exist yet; ignore
@@ -239,9 +294,9 @@ async function createSchedule(event, user) {
 
     await client.query('COMMIT')
     return successResponse({ 
-      schedules: createdSchedules,
-      total_lessons: 1,
-      template: templateResult.rows[0]
+      template: templateResult.rows[0],
+      occurrences: occurrences.rows,
+      total_lessons: occurrences.rows.length
     }, 201)
   } catch (error) {
     await client.query('ROLLBACK')
@@ -283,7 +338,7 @@ async function updateSchedule(event, user) {
   }
 }
 
-// Mark attendance for a specific schedule
+// REWRITTEN markAttendance function - Use mark_schedule_completed for completion
 async function markAttendance(event, user) {
   try {
     const scheduleId = parseInt(event.path.split('/')[3])
@@ -294,10 +349,15 @@ async function markAttendance(event, user) {
     }
 
     // Check ownership for teachers
-    const scheduleRes = await query('SELECT student_id, teacher_id, time_slot FROM student_schedules WHERE id = $1', [scheduleId])
+    const scheduleRes = await query('SELECT student_id, teacher_id, time_slot, is_active FROM student_schedules WHERE id = $1', [scheduleId])
     if (scheduleRes.rows.length === 0) return errorResponse(404, 'Schedule not found')
     if (user.role === 'teacher' && scheduleRes.rows[0].teacher_id !== user.teacherId) {
       return errorResponse(403, 'Forbidden')
+    }
+
+    // Check if schedule is active
+    if (!scheduleRes.rows[0].is_active) {
+      return errorResponse(400, 'Cannot mark attendance for inactive schedule')
     }
 
     const attendanceDate = date || new Date().toISOString().split('T')[0]
@@ -306,29 +366,20 @@ async function markAttendance(event, user) {
     try {
       await client.query('BEGIN')
 
-      await client.query(
-        'UPDATE student_schedules SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-        [status, attendanceDate, scheduleId]
-      )
-
-      const { student_id, time_slot } = scheduleRes.rows[0]
-
       if (status === 'completed') {
-        // upsert student_lessons entry (unique constraint ensures idempotency)
-        await client.query(
-          'INSERT INTO student_lessons (student_id, lesson_date, time_slot) VALUES ($1, $2, $3) ON CONFLICT (student_id, lesson_date, time_slot) DO NOTHING',
-          [student_id, attendanceDate, time_slot]
-        )
+        // Use atomic database function for completion (idempotent)
+        await client.query('SELECT mark_schedule_completed($1, $2)', [scheduleId, user.userId])
       } else {
-        // remove from student_lessons if existed
-        await client.query(
-          'DELETE FROM student_lessons WHERE student_id = $1 AND lesson_date = $2 AND time_slot = $3',
-          [student_id, attendanceDate, time_slot]
-        )
+        // Safe update for absent/warned (consistency trigger handles lesson_type)
+        await client.query(`
+          UPDATE student_schedules 
+          SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3 AND is_active = TRUE
+        `, [status, attendanceDate, scheduleId])
       }
 
       await client.query('COMMIT')
-      return successResponse({ message: 'Attendance updated' })
+      return successResponse({ message: 'Attendance updated successfully' })
     } catch (e) {
       await client.query('ROLLBACK')
       throw e
@@ -691,7 +742,7 @@ async function generateRecurringSchedules(client, studentId, teacherId, dayOfWee
   }
 }
 
-// Enhanced deleteSchedule function with past/future logic
+// REWRITTEN deleteSchedule function - Soft delete with template cancellation
 async function deleteSchedule(event, user) {
   try {
     if (user.role !== 'admin') {
@@ -699,63 +750,30 @@ async function deleteSchedule(event, user) {
     }
 
     const scheduleId = parseInt(event.path.split('/')[3])
-    const currentDate = new Date().toISOString().split('T')[0]
-    
+
     const client = await getPool().connect()
-    
+
     try {
-      await client.query('BEGIN')
+      console.log('🔍 [DELETE] Attempting to delete schedule ID:', scheduleId, 'by user:', user.userId)
       
-      // 1. Get schedule details
-      const scheduleQuery = await client.query(
-        'SELECT * FROM student_schedules WHERE id = $1',
-        [scheduleId]
-      )
-      
-      if (scheduleQuery.rows.length === 0) {
+      // Use the optimized database function
+      const result = await client.query('SELECT delete_future_lesson($1, $2)', [
+        scheduleId,
+        user.userId
+      ])
+
+      console.log('🔍 [DELETE] Function result:', result.rows[0])
+
+      if (!result.rows[0].delete_future_lesson) {
+        console.log('🔍 [DELETE] Function returned false - schedule not found or not deletable')
         return errorResponse(404, 'Schedule not found')
       }
-      
-      const schedule = scheduleQuery.rows[0]
-      const isPastLesson = schedule.week_start_date < currentDate
-      
-      if (isPastLesson) {
-        // Past lesson: Mark as cancelled and log to history table
-        await client.query(
-          'UPDATE student_schedules SET lesson_type = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          ['cancelled', scheduleId]
-        )
-        
-        // Log to schedule_history for audit trail
-        try {
-          await client.query(
-            `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
-             VALUES ($1, 'cancelled', $2, NULL, $3, 'Past lesson marked as cancelled - preserved for historical records')`,
-            [scheduleId, schedule.teacher_id, user.userId]
-          )
-        } catch (e) {
-          console.log('Note: schedule_history table may not exist yet')
-        }
-        
-        await client.query('COMMIT')
-        return successResponse({ 
-          message: 'Past lesson marked as cancelled (preserved for historical records)',
-          action: 'marked_cancelled'
-        })
-      } else {
-        // Future lesson: Delete from future weeks + update template
-        await deleteFutureLessons(client, schedule)
-        await updateScheduleTemplate(client, schedule)
-        
-        await client.query('COMMIT')
-        return successResponse({ 
-          message: 'Future lessons deleted successfully',
-          action: 'deleted_future'
-        })
-      }
-    } catch (error) {
-      await client.query('ROLLBACK')
-      throw error
+
+      console.log('✅ [DELETE] Schedule deleted successfully')
+      return successResponse({
+        message: 'Schedule deleted successfully',
+        action: 'deleted'
+      })
     } finally {
       client.release()
     }

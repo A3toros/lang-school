@@ -552,11 +552,11 @@ async function getTeacherStudents(event, user) {
   }
 }
 
-// Get teacher's schedule
+// REWRITTEN getTeacherSchedule function - Use upcoming_schedule_view for active schedules
 async function getTeacherSchedule(event, user) {
   try {
     const teacherId = parseInt(event.path.split('/')[3])
-    const { week_start } = event.queryStringParameters || {}
+    const { week_start, include_history = 'false' } = event.queryStringParameters || {}
     
     // Check permissions
     if (user.role === 'teacher' && user.teacherId !== teacherId) {
@@ -565,15 +565,66 @@ async function getTeacherSchedule(event, user) {
 
     const weekStart = week_start || getCurrentWeekStart()
 
-    const queryText = `
-      SELECT ss.*, s.name as student_name, s.id as student_id
+    let queryText
+    let params = [teacherId]
+
+    if (include_history === 'true') {
+      // Historical data
+      queryText = `
+        SELECT ss.*, s.name as student_name, s.id as student_id,
+               CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                    WHEN ss.attendance_status = 'absent' THEN 'absent'
+                    WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                    ELSE 'scheduled'
+               END as status
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
       WHERE ss.teacher_id = $1 AND ss.week_start_date = $2 AND s.is_active = true
       ORDER BY ss.day_of_week, ss.time_slot
     `
+      params.push(weekStart)
+        } else {
+          // Future calendar queries - show only current and future weeks
+          // If specific week requested, show that week; otherwise show all upcoming
+          if (week_start) {
+            queryText = `
+              SELECT ss.id, s.id as student_id, s.name as student_name, 
+                     t.id as teacher_id, t.name as teacher_name,
+                     ss.day_of_week, ss.time_slot, ss.week_start_date,
+                     ss.attendance_status, ss.lesson_type,
+                     CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                          WHEN ss.attendance_status = 'absent' THEN 'absent'
+                          WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                          ELSE 'scheduled'
+                     END as status
+              FROM student_schedules ss
+              JOIN students s ON ss.student_id = s.id
+              JOIN teachers t ON ss.teacher_id = t.id
+              WHERE ss.teacher_id = $1 AND ss.week_start_date = $2 AND ss.week_start_date >= get_current_week_start()
+              ORDER BY ss.day_of_week, ss.time_slot
+            `
+            params.push(weekStart)
+          } else {
+            queryText = `
+              SELECT ss.id, s.id as student_id, s.name as student_name, 
+                     t.id as teacher_id, t.name as teacher_name,
+                     ss.day_of_week, ss.time_slot, ss.week_start_date,
+                     ss.attendance_status, ss.lesson_type,
+                     CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
+                          WHEN ss.attendance_status = 'absent' THEN 'absent'
+                          WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
+                          ELSE 'scheduled'
+                     END as status
+              FROM student_schedules ss
+              JOIN students s ON ss.student_id = s.id
+              JOIN teachers t ON ss.teacher_id = t.id
+              WHERE ss.teacher_id = $1 AND ss.week_start_date >= get_current_week_start()
+              ORDER BY ss.week_start_date, ss.day_of_week, ss.time_slot
+            `
+          }
+        }
     
-    const result = await query(queryText, [teacherId, weekStart])
+    const result = await query(queryText, params)
     return successResponse({ schedules: result.rows })
   } catch (error) {
     console.error('Get teacher schedule error:', error)
