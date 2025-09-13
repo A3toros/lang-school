@@ -82,21 +82,16 @@ const Header = ({ onLogin, loginError }) => {
 
   return (
     <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-neutral-200 sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">R</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-neutral-800">Rio talk</h1>
-              <p className="text-xs text-neutral-500">Language School</p>
-            </div>
-          </div>
+      {/* Banner Image with Login Overlay */}
+      <div className="relative w-full h-32 bg-contain bg-center bg-no-repeat" 
+           style={{ backgroundImage: 'url(/pics/large.jpg)' }}>
+        <div className="w-full h-full bg-black bg-opacity-10"></div> </div>
+        
+        {/* Login Overlay */}
+        <div className="absolute top-0 right-0 p-4">
 
           {/* Debug Panel Toggle */}
-          {process.env.NODE_ENV === 'development' && (
+          {import.meta.env.DEV && (
             <button
               onClick={() => {
                 apiDebugger.enable()
@@ -225,7 +220,6 @@ const Header = ({ onLogin, loginError }) => {
                 </div>
               </motion.div>
             )}
-          </div>
         </div>
       </div>
     </header>

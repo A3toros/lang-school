@@ -67,7 +67,7 @@ async function getReports(event, user) {
   })
 
   try {
-    const { teacher_id, student_id, date_from, date_to, page, limit } = event.queryStringParameters || {}
+    const { teacher_id, student_id, date_from, date_to, lesson_date, time_slot, page, limit } = event.queryStringParameters || {}
     const { offset } = getPaginationParams({ page, limit })
 
     console.log('📋 [REPORTS] Query parameters parsed', {
@@ -75,6 +75,8 @@ async function getReports(event, user) {
       student_id,
       date_from,
       date_to,
+      lesson_date,
+      time_slot,
       page,
       limit,
       offset
@@ -109,6 +111,16 @@ async function getReports(event, user) {
     if (date_to) {
       queryText += ` AND lr.lesson_date::date <= $${++paramCount}::date`
       params.push(date_to)
+    }
+
+    if (lesson_date) {
+      queryText += ` AND lr.lesson_date::date = $${++paramCount}::date`
+      params.push(lesson_date)
+    }
+
+    if (time_slot) {
+      queryText += ` AND lr.time_slot = $${++paramCount}`
+      params.push(time_slot)
     }
 
     // Filter by teacher if user is a teacher

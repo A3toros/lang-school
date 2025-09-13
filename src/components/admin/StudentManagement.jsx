@@ -492,80 +492,80 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
 
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Student Management</h2>
+    <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6 gap-4">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800">Student Management</h2>
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+          className="bg-primary-500 hover:bg-primary-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base transition-colors duration-200"
         >
           Add New Student
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-1 mb-6">
+      <div className="flex space-x-1 mb-4 sm:mb-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab('active')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+          className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
             activeTab === 'active'
               ? 'bg-primary-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          Active Students ({students.length})
+          Active ({students.length})
         </button>
         <button
           onClick={() => setActiveTab('inactive')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+          className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
             activeTab === 'inactive'
               ? 'bg-primary-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          Inactive Students ({inactiveStudents.length})
+          Inactive ({inactiveStudents.length})
         </button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-3 sm:mb-4">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Search by name</label>
+            <label className="block text-xs sm:text-sm text-gray-600 mb-1">Search by name</label>
             <input
               type="text"
               placeholder="Search by name..."
               value={filters.name}
               onChange={(e) => handleFilterChange('name', e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full"
+              className="px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">From date</label>
+            <label className="block text-xs sm:text-sm text-gray-600 mb-1">From date</label>
             <input
               type="date"
               placeholder="From date"
               value={filters.date_from}
               onChange={(e) => handleFilterChange('date_from', e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full"
+              className="px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">To date</label>
+            <label className="block text-xs sm:text-sm text-gray-600 mb-1">To date</label>
             <input
               type="date"
               placeholder="To date"
               value={filters.date_to}
               onChange={(e) => handleFilterChange('date_to', e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full"
+              className="px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Status</label>
+            <label className="block text-xs sm:text-sm text-gray-600 mb-1">Status</label>
             <select
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full"
+              className="px-2 sm:px-3 py-1 sm:py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-full text-sm"
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -573,8 +573,8 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
             </select>
           </div>
         </div>
-        <div className="flex justify-between items-center">
-          <div className="text-sm text-gray-600">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0">
+          <div className="text-xs sm:text-sm text-gray-600">
             {filters.date_from && filters.date_to 
               ? `Showing lesson counts from ${filters.date_from} to ${filters.date_to}`
               : 'Showing all-time lesson counts'
@@ -582,9 +582,9 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
           </div>
           <button 
             onClick={() => fetchStudents()} 
-            className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center space-x-2"
+            className="bg-primary-500 hover:bg-primary-600 text-white px-3 sm:px-4 py-1 sm:py-2 rounded-lg text-sm transition-colors duration-200 flex items-center justify-center space-x-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             <span>Update</span>
@@ -594,12 +594,12 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
 
 
       {/* Students Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full table-auto">
+      <div className="w-full">
+        <table className="w-full table-fixed">
           <thead>
             <tr className="bg-gray-50">
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none w-1/3 sm:w-auto"
                 onClick={() => handleSort('name')}
               >
                 <div className="flex items-center space-x-1">
@@ -612,11 +612,11 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden sm:table-cell"
                 onClick={() => handleSort('teacher_name')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Primary Teacher</span>
+                  <span>Teacher</span>
                   {sortConfig.key === 'teacher_name' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -625,11 +625,11 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden md:table-cell"
                 onClick={() => handleSort('lessons_per_week')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Lessons/Week (Auto)</span>
+                  <span>Lessons/Week</span>
                   {sortConfig.key === 'lessons_per_week' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -638,7 +638,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden lg:table-cell"
                 onClick={() => handleSort('lesson_count')}
               >
                 <div className="flex items-center space-x-1">
@@ -651,7 +651,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden xl:table-cell"
                 onClick={() => handleSort('added_date')}
               >
                 <div className="flex items-center space-x-1">
@@ -664,7 +664,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden lg:table-cell"
                 onClick={() => handleSort('is_active')}
               >
                 <div className="flex items-center space-x-1">
@@ -676,7 +676,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   )}
                 </div>
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-1 sm:px-2 py-1 sm:py-2 text-left text-2xs font-medium text-gray-500 uppercase tracking-wider w-1/3 sm:w-auto">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -704,26 +704,46 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   whileHover={{ scale: 1.01 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {student.name}
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs font-medium text-gray-900">
+                    <div className="min-w-0">
+                      <div className="truncate">{student.name}</div>
+                      {/* Mobile: Show key info inline */}
+                      <div className="sm:hidden mt-1 space-y-1">
+                        <div className="text-2xs text-gray-500">
+                          Teacher: {student.teacher_name || 'Unassigned'}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-blue-100 text-blue-800">
+                            {student.lesson_count || 0} lessons
+                          </span>
+                          <span className={`inline-flex px-1.5 py-0.5 text-2xs font-semibold rounded-full ${
+                            student.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {student.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs text-gray-500 hidden sm:table-cell">
                     {student.teacher_name || 'Unassigned'}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs text-gray-500 hidden md:table-cell">
                     {student.lessons_per_week}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs text-gray-500 hidden lg:table-cell">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-blue-100 text-blue-800">
                       {student.lesson_count || 0}
                     </span>
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs text-gray-500 hidden xl:table-cell">
                     {new Date(student.added_date).toLocaleDateString()}
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 hidden lg:table-cell">
                     <div className="flex items-center space-x-2">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      <span className={`inline-flex px-1.5 py-0.5 text-2xs font-semibold rounded-full ${
                         student.is_active 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-red-100 text-red-800'
@@ -736,7 +756,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                           e.stopPropagation()
                           handleStatusChange(student, !student.is_active)
                         }}
-                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                        className={`text-2xs px-1.5 py-0.5 rounded transition-colors ${
                           student.is_active
                             ? 'bg-red-100 text-red-700 hover:bg-red-200'
                             : 'bg-green-100 text-green-700 hover:bg-green-200'
@@ -746,8 +766,8 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                       </button>
                     </div>
                   </td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex space-x-2">
+                  <td className="px-1 sm:px-2 py-1 sm:py-2 text-2xs text-gray-500">
+                    <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
                       {student.is_active && (
                         <>
                           <button
@@ -755,9 +775,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                               e.stopPropagation()
                               openTeacherModal(student)
                             }}
-                            className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors duration-200"
+                            className="px-2 sm:px-3 py-1 text-2xs sm:text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors duration-200"
                           >
-                            Manage Teachers
+                            <span className="hidden sm:inline">Manage Teachers</span>
+                            <span className="sm:hidden">Teachers</span>
                           </button>
                           <div className="flex space-x-1">
                             <button
@@ -767,7 +788,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                                 e.stopPropagation()
                                 handleHardDelete(student)
                               }}
-                              className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded hover:bg-red-50"
+                              className="text-red-600 hover:text-red-800 text-2xs sm:text-xs px-2 py-1 rounded hover:bg-red-50"
                             >
                               Delete
                             </button>
@@ -784,22 +805,22 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       </div>
 
       {/* Pagination */}
-      <div className="flex justify-between items-center mt-6">
-        <div className="text-sm text-gray-700">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-4 sm:mt-6 gap-2 sm:gap-0">
+        <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
           Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total || 0)} of {pagination.total || 0} students
         </div>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 justify-center sm:justify-end">
           <button
             onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
             disabled={pagination.page === 1}
-            className="px-3 py-1 border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            className="px-2 sm:px-3 py-1 text-xs sm:text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
           >
             Previous
           </button>
           <button
             onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
             disabled={pagination.page * pagination.limit >= pagination.total}
-            className="px-3 py-1 border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            className="px-2 sm:px-3 py-1 text-xs sm:text-sm border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
           >
             Next
           </button>

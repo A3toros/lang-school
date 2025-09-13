@@ -2,7 +2,7 @@
  * Cloudinary utility functions for image upload and management
  */
 
-const CLOUDINARY_URL = process.env.REACT_APP_CLOUDINARY_URL || 'cloudinary://252927275769619:0QungPQ1DalxpwHvJE1COjICbww@dnovxoaqi'
+const CLOUDINARY_URL = import.meta.env.VITE_CLOUDINARY_URL || 'cloudinary://252927275769619:0QungPQ1DalxpwHvJE1COjICbww@dnovxoaqi'
 
 /**
  * Extracts Cloudinary configuration from URL
@@ -13,6 +13,7 @@ export const getCloudinaryConfig = () => {
     const url = new URL(CLOUDINARY_URL.replace('cloudinary://', 'https://'))
     const [apiKey, apiSecret] = url.username.split(':')
     const cloudName = url.hostname.split('.')[0]
+    
     
     return {
       cloudName,
@@ -55,7 +56,9 @@ export const getOptimizedImageUrl = (publicId, transformations = {}) => {
     crop = 'fill',
     gravity = 'auto',
     radius = null,
-    effect = null
+    effect = null,
+    aspectRatio = null,
+    responsive = false
   } = transformations
 
   let url = `https://res.cloudinary.com/${config.cloudName}/image/upload`
@@ -63,8 +66,16 @@ export const getOptimizedImageUrl = (publicId, transformations = {}) => {
   // Build transformation string
   const transforms = []
   
-  if (width) transforms.push(`w_${width}`)
+  // Handle responsive width - use w_auto for responsive images
+  if (responsive) {
+    transforms.push('w_auto')
+    transforms.push('c_scale') // Use scale crop for responsive images
+  } else if (width) {
+    transforms.push(`w_${width}`)
+  }
+  
   if (height) transforms.push(`h_${height}`)
+  if (aspectRatio) transforms.push(`ar_${aspectRatio}`)
   if (crop) transforms.push(`c_${crop}`)
   if (gravity) transforms.push(`g_${gravity}`)
   if (quality) transforms.push(`q_${quality}`)
@@ -77,6 +88,7 @@ export const getOptimizedImageUrl = (publicId, transformations = {}) => {
   }
   
   url += `/${publicId}`
+  
   
   return url
 }
@@ -129,6 +141,87 @@ export const getResponsiveImageUrls = (publicId, options = {}) => {
       format: 'auto'
     })
   }
+}
+
+/**
+ * Generates responsive course image URLs with dynamic aspect ratios
+ * @param {string} publicId - Cloudinary public ID
+ * @param {object} options - Responsive options
+ * @returns {object} - Responsive course image URLs
+ */
+export const getResponsiveCourseImages = (publicId, options = {}) => {
+  const {
+    baseAspectRatio = '16:9',
+    quality = 'auto',
+    format = 'auto'
+  } = options
+
+  return {
+    mobile: getOptimizedImageUrl(publicId, {
+      width: 400,
+      aspectRatio: baseAspectRatio,
+      crop: 'fill',
+      gravity: 'auto',
+      quality,
+      format
+    }),
+    tablet: getOptimizedImageUrl(publicId, {
+      width: 800,
+      aspectRatio: baseAspectRatio,
+      crop: 'fill',
+      gravity: 'auto',
+      quality,
+      format
+    }),
+    desktop: getOptimizedImageUrl(publicId, {
+      width: 1200,
+      aspectRatio: baseAspectRatio,
+      crop: 'fill',
+      gravity: 'auto',
+      quality,
+      format
+    }),
+    large: getOptimizedImageUrl(publicId, {
+      width: 1600,
+      aspectRatio: baseAspectRatio,
+      crop: 'fill',
+      gravity: 'auto',
+      quality,
+      format
+    }),
+    original: getOptimizedImageUrl(publicId, {
+      aspectRatio: baseAspectRatio,
+      crop: 'fill',
+      gravity: 'auto',
+      quality: 'auto',
+      format: 'auto'
+    })
+  }
+}
+
+/**
+ * Generates fully responsive image URL that adapts to any container width
+ * @param {string} publicId - Cloudinary public ID
+ * @param {object} options - Responsive options
+ * @returns {string} - Responsive image URL
+ */
+export const getResponsiveImage = (publicId, options = {}) => {
+  const {
+    aspectRatio = null,
+    quality = 'auto',
+    format = 'auto',
+    crop = 'fill',
+    gravity = 'auto'
+  } = options
+
+  return getOptimizedImageUrl(publicId, {
+    width: 1200, // Use a reasonable base width
+    aspectRatio,
+    quality,
+    format,
+    crop,
+    gravity
+  })
 }
 
 /**
@@ -382,6 +475,8 @@ export default {
   getUploadUrl,
   getOptimizedImageUrl,
   getResponsiveImageUrls,
+  getResponsiveCourseImages,
+  getResponsiveImage,
   validateImageFile,
   resizeImageFile,
   generateSignature,

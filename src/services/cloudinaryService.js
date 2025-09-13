@@ -1,5 +1,6 @@
 import cloudinaryUtils from '../utils/cloudinary'
 import apiService from '../utils/api'
+import { tokenManager } from '../utils/tokenManager'
 
 /**
  * Cloudinary service for handling image uploads and management
@@ -356,6 +357,132 @@ class CloudinaryService {
       }
     } catch (error) {
       console.error('❌ [CLOUDINARY_SERVICE] List images error:', error)
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  }
+
+  /**
+   * Upload any file type using signed upload tokens (hybrid approach)
+   * @param {File} file - File to upload
+   * @param {string} folder - Cloudinary folder path
+   * @param {object} options - Upload options
+   * @returns {Promise<object>} - Upload result
+   */
+  async uploadFile(file, folder = 'lang-school', options = {}) {
+    try {
+      console.log('📤 [CLOUDINARY] Starting signed upload process:', {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        folder
+      })
+
+      // Step 1: Get signed upload token from backend
+      // Ensure we have a valid file type (fallback to extension if MIME type is missing/incorrect)
+      const fileType = file.type || `application/${file.name.split('.').pop()?.toLowerCase()}`
+      
+      const tokenResponse = await apiService.getUploadToken({
+        fileType: fileType,
+        fileSize: file.size,
+        folder: folder,
+        fileName: file.name
+      })
+
+      console.log('🔍 [CLOUDINARY] Token response:', tokenResponse)
+
+      if (!tokenResponse.success) {
+        throw new Error(tokenResponse.error || 'Failed to get upload token')
+      }
+
+      // The response data is at the root level, not nested under 'data'
+      const responseData = tokenResponse.data || tokenResponse
+      
+      if (!responseData.signature || !responseData.timestamp || !responseData.cloudName || !responseData.apiKey) {
+        console.error('❌ [CLOUDINARY] Invalid token response structure:', responseData)
+        throw new Error('Invalid token response - missing required fields')
+      }
+
+      const { signature, timestamp, cloudName, apiKey, publicId, resourceType, accessMode } = responseData
+
+      console.log('🔑 [CLOUDINARY] Got upload token:', {
+        cloudName,
+        apiKey,
+        publicId,
+        resourceType,
+        accessMode,
+        hasSignature: !!signature
+      })
+
+      // Step 2: Upload directly to Cloudinary with signed parameters
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('api_key', apiKey)
+      formData.append('signature', signature)
+      formData.append('timestamp', timestamp)
+      formData.append('public_id', publicId)
+      formData.append('resource_type', resourceType)
+      formData.append('folder', folder)
+      if (accessMode) {
+        formData.append('access_mode', accessMode)
+      }
+      
+      // Add any additional options
+      Object.keys(options).forEach(key => {
+        formData.append(key, options[key])
+      })
+
+      console.log('📤 [CLOUDINARY] Upload parameters:', {
+        apiKey,
+        signature,
+        timestamp,
+        publicId,
+        resourceType,
+        accessMode,
+        folder
+      })
+
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      )
+
+      const result = await response.json()
+
+      if (result.secure_url) {
+        console.log('✅ [CLOUDINARY] File uploaded successfully:', {
+          publicId: result.public_id,
+          secureUrl: result.secure_url,
+          accessMode: accessMode
+        })
+
+        // Step 3: Wait a moment for webhook to process
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        return {
+          success: true,
+          publicId: result.public_id,
+          secureUrl: result.secure_url,
+          url: result.secure_url,
+          originalFilename: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          folder: result.folder
+        }
+      } else {
+        console.error('❌ [CLOUDINARY] Upload failed:', result.error)
+        return {
+          success: false,
+          error: result.error?.message || 'Upload failed'
+        }
+      }
+    } catch (error) {
+      console.error('❌ [CLOUDINARY] Upload error:', error)
       return {
         success: false,
         error: error.message

@@ -1,3 +1,4 @@
+
 -- Language School Management System Database Schema
 -- Neon PostgreSQL Database Setup
 
@@ -1775,3 +1776,47 @@ FROM student_schedules ss
 JOIN teachers t ON ss.teacher_id = t.id
 WHERE ss.week_start_date >= get_current_week_start()
 GROUP BY ss.teacher_id, t.name, DATE_TRUNC('month', ss.week_start_date)::DATE;
+
+
+### 1. `file_folders` table
+
+CREATE TABLE file_folders (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+### 2. `shared_files` table
+
+CREATE TABLE shared_files (
+    id SERIAL PRIMARY KEY,
+    folder_id INTEGER REFERENCES file_folders(id) ON DELETE CASCADE,
+    original_name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(50) NOT NULL, -- 'pdf', 'doc', 'docx', 'txt', etc.
+    file_size BIGINT NOT NULL, -- in bytes
+    cloudinary_public_id VARCHAR(255) NOT NULL,
+    cloudinary_url VARCHAR(500) NOT NULL,
+    uploaded_by INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    is_active BOOLEAN DEFAULT true,
+    download_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+### 3. `file_access_logs` table (optional - for analytics)
+
+CREATE TABLE file_access_logs (
+    id SERIAL PRIMARY KEY,
+    file_id INTEGER REFERENCES shared_files(id) ON DELETE CASCADE,
+    accessed_by INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    action VARCHAR(50) NOT NULL, -- 'view', 'download'
+    accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

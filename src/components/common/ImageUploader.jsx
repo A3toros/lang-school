@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 
@@ -16,7 +16,21 @@ const ImageUploader = ({
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(null)
   const [dragActive, setDragActive] = useState(false)
+  const [uploadedImage, setUploadedImage] = useState(uploadedImageUrl)
+  const [deleting, setDeleting] = useState(false)
   const fileInputRef = useRef(null)
+
+  // Update uploadedImage when prop changes
+  useEffect(() => {
+    setUploadedImage(uploadedImageUrl)
+  }, [uploadedImageUrl])
+
+  // Also update when uploadedImageUrl changes directly
+  useEffect(() => {
+    if (uploadedImageUrl !== uploadedImage) {
+      setUploadedImage(uploadedImageUrl)
+    }
+  }, [uploadedImageUrl, uploadedImage])
 
   const handleFileSelect = async (file) => {
     if (!file) return
@@ -45,16 +59,14 @@ const ImageUploader = ({
       // Convert file to base64
       const base64 = await fileToBase64(file)
       
-      const response = await apiService.uploadImage({
-        image: base64,
-        folder,
-        transformations
-      })
+      const response = await apiService.uploadImage(base64, folder, null, transformations)
 
       if (response.success) {
         // Cloudinary returns data directly in response, not in response.data
         const imageData = response.secure_url || response.data
-        onUpload?.(imageData)
+        const publicId = response.public_id
+        setUploadedImage(imageData)
+        onUpload?.(imageData, publicId)
         setPreview(null)
       } else {
         onError?.(response.error || 'Upload failed')
@@ -74,6 +86,59 @@ const ImageUploader = ({
       reader.onload = () => resolve(reader.result)
       reader.onerror = error => reject(error)
     })
+  }
+
+  const extractPublicIdFromUrl = (url) => {
+    if (!url) return null
+    try {
+      const parts = url.split('/')
+      const publicIdWithExtension = parts[parts.length - 1]
+      const publicId = publicIdWithExtension.split('.')[0]
+      return publicId
+    } catch (error) {
+      console.error('Error extracting public ID from URL:', error)
+      return null
+    }
+  }
+
+  const handleDelete = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!uploadedImage) {
+      onError?.('No image to delete')
+      return
+    }
+
+    if (!window.confirm('Are you sure you want to delete this image?')) {
+      return
+    }
+
+    setDeleting(true)
+
+    try {
+      // Extract public ID from the stored URL and delete from Cloudinary
+      const publicId = extractPublicIdFromUrl(uploadedImage)
+      if (publicId) {
+        const response = await apiService.deleteImage(publicId)
+        
+        if (!response.success) {
+          onError?.(response.error || 'Failed to delete image from Cloudinary')
+          return
+        }
+      }
+
+      // Clear the uploaded image state
+      setUploadedImage(null)
+      // Notify parent component
+      onUpload?.('') // Clear the image URL
+      alert('Image deleted successfully!')
+    } catch (error) {
+      console.error('Delete error:', error)
+      onError?.('Failed to delete image. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleDrag = (e) => {
@@ -109,18 +174,28 @@ const ImageUploader = ({
   return (
     <div className={`relative ${className}`}>
       {/* Show uploaded image if available */}
-      {uploadedImageUrl && (
+      {uploadedImage && uploadedImage !== '' && uploadedImage !== null && uploadedImage !== undefined && uploadedImage.startsWith('http') && (
         <div className="mb-4 flex justify-center">
-          <img
-            src={uploadedImageUrl}
-            alt="Uploaded teacher photo"
-            className="w-32 h-32 object-cover rounded-lg shadow-md"
-          />
+          <div className="relative">
+            <img
+              src={uploadedImage}
+              alt="Course background image"
+              className="w-full h-64 object-cover rounded-lg shadow-md"
+            />
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Show upload area only if showUploadArea is true */}
-      {showUploadArea && (
+      {/* Show upload area if showUploadArea is true and no image is uploaded */}
+      {showUploadArea && (!uploadedImage || uploadedImage === '' || uploadedImage === null || uploadedImage === undefined || (uploadedImage && !uploadedImage.startsWith('http'))) && (
         <motion.div
           className={`
             border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200
@@ -179,6 +254,7 @@ const ImageUploader = ({
           )}
         </motion.div>
       )}
+
     </div>
   )
 }

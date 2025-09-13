@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useAuth } from './useAuth'
+import { tokenManager } from '../utils/tokenManager'
 
 /**
  * Custom hook for automatic token refresh
@@ -21,19 +22,13 @@ export const useTokenRefresh = () => {
 
     const checkAndRefreshToken = async () => {
       try {
-        const accessToken = localStorage.getItem('accessToken')
+        const accessToken = tokenManager.getStoredAccessToken()
         if (!accessToken) return
 
-        // Decode token to check expiration
-        const tokenPayload = JSON.parse(atob(accessToken.split('.')[1]))
-        const currentTime = Math.floor(Date.now() / 1000)
-        const timeUntilExpiry = tokenPayload.exp - currentTime
-
-        // If token expires in less than 5 minutes, refresh it
-        if (timeUntilExpiry < 300) {
+        // Use tokenManager's built-in expiration check
+        if (tokenManager.shouldRefreshToken(accessToken)) {
           console.log('🔄 [TOKEN_REFRESH] Token expires soon, refreshing...', {
-            timeUntilExpiry,
-            expiresAt: new Date(tokenPayload.exp * 1000).toISOString()
+            expiresAt: tokenManager.getTokenExpiration(accessToken)
           })
           
           await refreshToken()

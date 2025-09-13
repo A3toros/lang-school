@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../utils/api'
 import { getCurrentWeekStart, getWeekEnd, getWeekStart, getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo } from '../utils/dateUtils'
+import FileLibrary from '../components/teacher/FileLibrary'
 
 const TeacherPage = () => {
   const { user, logout } = useAuth()
@@ -12,6 +13,7 @@ const TeacherPage = () => {
   const [showReportModal, setShowReportModal] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('')
+  const [selectedDayIndex, setSelectedDayIndex] = useState(null)
   const [reportComment, setReportComment] = useState('')
   const [attendanceStats, setAttendanceStats] = useState({
     completed: 0,
@@ -29,6 +31,7 @@ const TeacherPage = () => {
   const [selectedReport, setSelectedReport] = useState(null)
   const [showReportViewModal, setShowReportViewModal] = useState(false)
   const [recentReports, setRecentReports] = useState([])
+  const [activeTab, setActiveTab] = useState('schedule')
 
   useEffect(() => {
     console.log('🔍 [TEACHER_PAGE] useEffect triggered with user:', user)
@@ -111,13 +114,12 @@ const TeacherPage = () => {
         })
         
         const reportKeys = currentWeekReports.map(report => {
-          // Use the same timezone-safe approach for key generation
+          // Use the actual lesson date for key generation to avoid collisions
           const reportDate = new Date(report.lesson_date)
           const reportDateStr = reportDate.getFullYear() + '-' + 
             String(reportDate.getMonth() + 1).padStart(2, '0') + '-' + 
             String(reportDate.getDate()).padStart(2, '0')
-          const reportWeekStart = getWeekStart(reportDateStr)
-          const key = `${report.student_id}-${reportWeekStart}-${report.time_slot}`
+          const key = `${report.student_id}-${reportDateStr}-${report.time_slot}`
           console.log('🔍 [TEACHER_PAGE] Generated report key:', key, 'from report:', report)
           return key
         })
@@ -204,8 +206,8 @@ const TeacherPage = () => {
     }
   }
 
-  const handleStudentClick = (student, timeSlot, scheduleItem) => {
-    console.log('🔍 [HANDLE_STUDENT_CLICK] Called with:', { student, timeSlot, scheduleItem })
+  const handleStudentClick = (student, timeSlot, scheduleItem, dayIndex) => {
+    console.log('🔍 [HANDLE_STUDENT_CLICK] Called with:', { student, timeSlot, scheduleItem, dayIndex })
     
     // Use the actual lesson date from the schedule, not today's date
     const lessonDate = scheduleItem.week_start_date || currentWeek
@@ -223,9 +225,10 @@ const TeacherPage = () => {
       return
     }
     
-    console.log('🔍 [HANDLE_STUDENT_CLICK] Setting up report modal with:', { student, timeSlot })
+    console.log('🔍 [HANDLE_STUDENT_CLICK] Setting up report modal with:', { student, timeSlot, dayIndex })
     setSelectedStudent(student)
     setSelectedTimeSlot(timeSlot)
+    setSelectedDayIndex(dayIndex)
     setShowReportModal(true)
     console.log('🔍 [HANDLE_STUDENT_CLICK] Report modal should now be visible')
   }
@@ -236,13 +239,28 @@ const TeacherPage = () => {
       return
     }
 
-    // Use the current week as the lesson date (since lessons are scheduled for the week)
-    const lessonDate = currentWeek
+    // Find the schedule item that matches the selected day and time slot
+    const scheduleItem = schedule.find(s => 
+      s.student_id === selectedStudent.id && 
+      s.time_slot === selectedTimeSlot &&
+      s.day_of_week === selectedDayIndex
+    )
+    
+    if (!scheduleItem) {
+      alert('Schedule item not found for this day and time slot')
+      return
+    }
+    
+    const lessonDate = new Date(scheduleItem.week_start_date)
+    lessonDate.setDate(lessonDate.getDate() + scheduleItem.day_of_week)
+    const lessonDateStr = lessonDate.getFullYear() + '-' + 
+      String(lessonDate.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(lessonDate.getDate()).padStart(2, '0')
 
     // Show confirmation dialog
     setPendingReport({
       student_id: selectedStudent.id,
-      lesson_date: lessonDate,
+      lesson_date: lessonDateStr,
       time_slot: selectedTimeSlot,
       comment: reportComment
     })
@@ -254,7 +272,8 @@ const TeacherPage = () => {
       // First, mark the lesson as completed
       const scheduleItem = schedule.find(s => 
         s.student_id === pendingReport.student_id && 
-        s.time_slot === pendingReport.time_slot
+        s.time_slot === pendingReport.time_slot &&
+        s.day_of_week === selectedDayIndex
       )
       
       if (scheduleItem) {
@@ -275,10 +294,8 @@ const TeacherPage = () => {
 
       if (response.success) {
         // Mark this lesson as having a report
-        // Use the same date format as the lesson key in render (week_start_date)
-        // Use the actual lesson date's week start for consistent key generation
-        const lessonWeekStart = getWeekStart(pendingReport.lesson_date)
-        const lessonKey = `${pendingReport.student_id}-${lessonWeekStart}-${pendingReport.time_slot}`
+        // Use the actual lesson date for key generation to avoid collisions
+        const lessonKey = `${pendingReport.student_id}-${pendingReport.lesson_date}-${pendingReport.time_slot}`
         console.log('🔍 [CONFIRM_SUBMIT] Adding lesson key to reports set:', lessonKey)
         setLessonsWithReports(prev => {
           const newSet = new Set([...prev, lessonKey])
@@ -306,6 +323,7 @@ const TeacherPage = () => {
         setReportComment('')
         setSelectedStudent(null)
         setSelectedTimeSlot('')
+        setSelectedDayIndex(null)
         setPendingReport(null)
         
         // Show success message with better UX
@@ -435,7 +453,7 @@ const TeacherPage = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">Teacher Dashboard</h1>
@@ -454,9 +472,32 @@ const TeacherPage = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <main className="w-full px-2 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+        {/* Navigation Tabs */}
+        <div className="flex space-x-1 sm:space-x-2 mb-3 sm:mb-4 md:mb-6 overflow-x-auto">
+          {[
+            { id: 'schedule', label: 'Schedule', shortLabel: 'Schedule' },
+            { id: 'files', label: 'Folder', shortLabel: 'Folder' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 rounded text-xs sm:text-sm md:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <span className="sm:hidden">{tab.shortLabel}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+        {/* Tab Content */}
+        {activeTab === 'schedule' && (
+          <>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -536,7 +577,7 @@ const TeacherPage = () => {
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <h2 className="text-lg font-semibold text-gray-900">Weekly Schedule</h2>
+                <h2 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Weekly Schedule</h2>
                 
                 {/* Week Navigation */}
                 <motion.div 
@@ -548,13 +589,13 @@ const TeacherPage = () => {
                   <motion.button
                     onClick={handlePreviousWeek}
                     disabled={isTransitioning}
-                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1 sm:p-1.5 md:p-2 rounded border border-gray-300 hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Previous Week"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     <motion.svg 
-                      className="w-4 h-4 text-gray-600" 
+                      className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -568,7 +609,7 @@ const TeacherPage = () => {
                   <motion.button
                     onClick={handleCurrentWeek}
                     disabled={isTransitioning}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`px-1 sm:px-2 md:px-3 py-0.5 sm:py-1 md:py-2 text-2xs sm:text-xs md:text-sm font-medium rounded transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed ${
                       navigationInfo?.isCurrentWeek 
                         ? 'bg-blue-500 text-white' 
                         : 'text-gray-700 bg-gray-100 hover:bg-gray-200'
@@ -591,13 +632,13 @@ const TeacherPage = () => {
                   <motion.button
                     onClick={handleNextWeek}
                     disabled={isTransitioning}
-                    className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1 sm:p-1.5 md:p-2 rounded border border-gray-300 hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Next Week"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
                     <motion.svg 
-                      className="w-4 h-4 text-gray-600" 
+                      className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -694,9 +735,13 @@ const TeacherPage = () => {
                         <td key={`${day}-${timeSlot}`} className="px-4 py-3">
                           {daySchedule.map((scheduleItem) => {
                             const status = getAttendanceStatus(scheduleItem)
-                            // Use the current week being displayed, not the database week
-                            const lessonWeekStart = currentWeek
-                            const lessonKey = `${scheduleItem.student_id}-${lessonWeekStart}-${timeSlot}`
+                            // Calculate the actual lesson date from week start + day of week
+                            const lessonDate = new Date(scheduleItem.week_start_date)
+                            lessonDate.setDate(lessonDate.getDate() + scheduleItem.day_of_week)
+                            const lessonDateStr = lessonDate.getFullYear() + '-' + 
+                              String(lessonDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                              String(lessonDate.getDate()).padStart(2, '0')
+                            const lessonKey = `${scheduleItem.student_id}-${lessonDateStr}-${timeSlot}`
                             const hasReport = lessonsWithReports.has(lessonKey)
                             const isRecentlySubmitted = recentlySubmitted.has(lessonKey)
                             
@@ -728,14 +773,24 @@ const TeacherPage = () => {
                                       const reportDateStr = reportDate.getFullYear() + '-' + 
                                         String(reportDate.getMonth() + 1).padStart(2, '0') + '-' + 
                                         String(reportDate.getDate()).padStart(2, '0')
-                                      const reportWeekStart = getWeekStart(reportDateStr)
-                                      const reportKey = `${r.student_id}-${reportWeekStart}-${r.time_slot}`
+                                      const reportKey = `${r.student_id}-${reportDateStr}-${r.time_slot}`
                                       return reportKey === lessonKey
                                     })
                                     if (report) {
                                       setSelectedReport(report)
                                       setShowReportViewModal(true)
                                     }
+                                  } else {
+                                    // Open report modal for completion
+                                    handleStudentClick(
+                                      {
+                                        id: scheduleItem.student_id,
+                                        name: scheduleItem.student_name
+                                      },
+                                      timeSlot,
+                                      scheduleItem,
+                                      dayIndex
+                                    )
                                   }
                                 }}
                               >
@@ -774,12 +829,15 @@ const TeacherPage = () => {
                                       if (hasReport) return
                                       e.stopPropagation()
                                       // Open report modal for completion
-                                      setSelectedStudent({
-                                        id: scheduleItem.student_id,
-                                        name: scheduleItem.student_name
-                                      })
-                                      setSelectedTimeSlot(timeSlot)
-                                      setShowReportModal(true)
+                                      handleStudentClick(
+                                        {
+                                          id: scheduleItem.student_id,
+                                          name: scheduleItem.student_name
+                                        },
+                                        timeSlot,
+                                        scheduleItem,
+                                        dayIndex
+                                      )
                                     }}
                                     disabled={hasReport}
                                     className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
@@ -845,6 +903,18 @@ const TeacherPage = () => {
             </AnimatePresence>
           </div>
         </motion.div>
+          </>
+        )}
+
+        {activeTab === 'files' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <FileLibrary />
+          </motion.div>
+        )}
 
         {/* Report Modal */}
         {console.log('🔍 [RENDER] Report modal check:', { showReportModal, selectedStudent: !!selectedStudent })}

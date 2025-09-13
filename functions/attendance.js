@@ -245,8 +245,7 @@ async function markAttendance(event, user) {
            WHERE student_id = $1 
              AND attendance_status = 'absent' 
              AND attendance_date >= $2::date - INTERVAL '7 days'
-             AND attendance_date <= $2::date
-           ORDER BY attendance_date DESC`,
+             AND attendance_date <= $2::date`,
           [schedule.student_id, attendanceDate]
         )
 

@@ -11,7 +11,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-neutral-50">
+        <div className="min-h-screen">
           <Routes>
             <Route path="/" element={<LoginPage />} />
             <Route 
@@ -34,7 +34,7 @@ function App() {
           </Routes>
           
           {/* Debug Panel - Only in development */}
-          {process.env.NODE_ENV === 'development' && <DebugPanel />}
+          {import.meta.env.DEV && <DebugPanel />}
         </div>
       </Router>
     </AuthProvider>

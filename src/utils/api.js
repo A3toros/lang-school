@@ -1,5 +1,6 @@
 // API service for making authenticated requests to Netlify Functions
 import apiDebugger from './debug'
+import { tokenManager } from './tokenManager'
 
 const API_BASE_URL = '/api'
 
@@ -10,7 +11,7 @@ class ApiService {
 
   // Get auth headers with token
   getAuthHeaders() {
-    const token = localStorage.getItem('accessToken')
+    const token = tokenManager.getStoredAccessToken()
     const headers = {
       'Content-Type': 'application/json'
     }
@@ -117,6 +118,11 @@ class ApiService {
         ...this.getAuthHeaders(),
         ...options.headers
       }
+    }
+
+    // Set Content-Type for JSON requests
+    if (options.body && typeof options.body === 'string') {
+      config.headers['Content-Type'] = 'application/json'
     }
 
     const startTime = Date.now()
@@ -1242,6 +1248,115 @@ class ApiService {
     }
   }
 
+  // Cloudinary API
+  async uploadImage(imageData, folder = 'lang-school', publicId = null, transformations = null) {
+    apiDebugger.info('CLOUDINARY', 'Uploading image', { folder, hasPublicId: !!publicId })
+    
+    try {
+      const result = await this.makeRequest('/cloudinary/upload', {
+        method: 'POST',
+        body: JSON.stringify({
+          image: imageData,
+          folder,
+          public_id: publicId,
+          transformations
+        })
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CLOUDINARY', 'Image uploaded successfully', { 
+          publicId: result.public_id,
+          url: result.secure_url 
+        })
+      } else {
+        apiDebugger.warning('CLOUDINARY', 'Failed to upload image', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CLOUDINARY', 'Error uploading image', { error: error.message })
+      throw error
+    }
+  }
+
+  async deleteImage(publicId) {
+    apiDebugger.info('CLOUDINARY', 'Deleting image', { publicId })
+    
+    try {
+      const result = await this.makeRequest('/cloudinary/delete', {
+        method: 'DELETE',
+        body: JSON.stringify({ public_id: publicId })
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CLOUDINARY', 'Image deleted successfully', { publicId })
+      } else {
+        apiDebugger.warning('CLOUDINARY', 'Failed to delete image', { publicId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CLOUDINARY', 'Error deleting image', { publicId, error: error.message })
+      throw error
+    }
+  }
+
+  async uploadCourseImage(courseId, imageData) {
+    apiDebugger.info('CLOUDINARY', 'Uploading course image', { courseId })
+    
+    try {
+      const result = await this.makeRequest('/cloudinary/upload-course-image', {
+        method: 'POST',
+        body: JSON.stringify({
+          course_id: courseId,
+          image: imageData
+        })
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CLOUDINARY', 'Course image uploaded successfully', { 
+          courseId,
+          publicId: result.public_id,
+          url: result.secure_url 
+        })
+      } else {
+        apiDebugger.warning('CLOUDINARY', 'Failed to upload course image', { courseId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CLOUDINARY', 'Error uploading course image', { courseId, error: error.message })
+      throw error
+    }
+  }
+
+  async uploadMissionBanner(imageData) {
+    apiDebugger.info('CLOUDINARY', 'Uploading mission banner', {})
+    
+    try {
+      const result = await this.makeRequest('/cloudinary/upload-mission-banner', {
+        method: 'POST',
+        body: JSON.stringify({
+          image: imageData
+        })
+      })
+      
+      if (result.success) {
+        apiDebugger.success('CLOUDINARY', 'Mission banner uploaded successfully', { 
+          publicId: result.public_id,
+          url: result.secure_url 
+        })
+      } else {
+        apiDebugger.warning('CLOUDINARY', 'Failed to upload mission banner', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CLOUDINARY', 'Error uploading mission banner', { error: error.message })
+      throw error
+    }
+  }
+
   async getShowcaseSettings() {
     apiDebugger.info('CONTENT', 'Fetching showcase settings')
     
@@ -1257,6 +1372,25 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('CONTENT', 'Error fetching showcase settings', { error: error.message })
+      throw error
+    }
+  }
+
+  async getShowcaseSettingsPublic() {
+    apiDebugger.info('CONTENT', 'Fetching showcase settings (public)')
+    
+    try {
+      const result = await this.makePublicRequest('/content/showcase/public')
+      
+      if (result.success) {
+        apiDebugger.success('CONTENT', 'Showcase settings fetched successfully (public)')
+      } else {
+        apiDebugger.warning('CONTENT', 'Failed to fetch showcase settings (public)', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('CONTENT', 'Error fetching showcase settings (public)', { error: error.message })
       throw error
     }
   }
@@ -1370,6 +1504,242 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('TEACHER_MGMT', 'Error setting primary teacher', { error: error.message })
+      throw error
+    }
+  }
+
+  // File Management API
+  async getFolders() {
+    apiDebugger.info('FILES', 'Fetching folders')
+    
+    try {
+      const result = await this.makeRequest('/files/folders')
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Folders fetched successfully', { count: result.folders?.length || 0 })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to fetch folders', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error fetching folders', { error: error.message })
+      throw error
+    }
+  }
+
+  async createFolder(folderData) {
+    apiDebugger.info('FILES', 'Creating folder', { folderData })
+    
+    try {
+      const result = await this.makeRequest('/files/folders', {
+        method: 'POST',
+        body: JSON.stringify(folderData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Folder created successfully', { folderId: result.folder?.id })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to create folder', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error creating folder', { error: error.message })
+      throw error
+    }
+  }
+
+  async updateFolder(folderId, folderData) {
+    apiDebugger.info('FILES', 'Updating folder', { folderId, folderData })
+    
+    try {
+      const result = await this.makeRequest(`/files/folders/${folderId}`, {
+        method: 'PUT',
+        body: JSON.stringify(folderData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Folder updated successfully', { folderId })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to update folder', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error updating folder', { error: error.message })
+      throw error
+    }
+  }
+
+  async deleteFolder(folderId) {
+    apiDebugger.info('FILES', 'Deleting folder', { folderId })
+    
+    try {
+      const result = await this.makeRequest(`/files/folders/${folderId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Folder deleted successfully', { folderId })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to delete folder', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error deleting folder', { error: error.message })
+      throw error
+    }
+  }
+
+  async uploadFile(fileData) {
+    apiDebugger.info('FILES', 'Uploading file', { fileName: fileData.display_name })
+    
+    try {
+      const result = await this.makeRequest('/files/upload', {
+        method: 'POST',
+        body: JSON.stringify(fileData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'File uploaded successfully', { fileId: result.file?.id })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to upload file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error uploading file', { error: error.message })
+      throw error
+    }
+  }
+
+  async updateFile(fileId, fileData) {
+    apiDebugger.info('FILES', 'Updating file', { fileId, fileData })
+    
+    try {
+      const result = await this.makeRequest(`/files/${fileId}`, {
+        method: 'PUT',
+        body: JSON.stringify(fileData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'File updated successfully', { fileId })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to update file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error updating file', { error: error.message })
+      throw error
+    }
+  }
+
+  async deleteFile(fileId) {
+    apiDebugger.info('FILES', 'Deleting file', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/files/${fileId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'File deleted successfully', { fileId })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to delete file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error deleting file', { error: error.message })
+      throw error
+    }
+  }
+
+  async getFiles(filters = {}) {
+    apiDebugger.info('FILES', 'Fetching files', { filters })
+    
+    try {
+      const queryString = new URLSearchParams(filters).toString()
+      const result = await this.makeRequest(`/files${queryString ? `?${queryString}` : ''}`)
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Files fetched successfully', { count: result.files?.length || 0 })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to fetch files', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error fetching files', { error: error.message })
+      throw error
+    }
+  }
+
+  async downloadFile(fileId) {
+    apiDebugger.info('FILES', 'Downloading file', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/files/${fileId}/download`)
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'File download initiated', { fileId })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to download file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error downloading file', { error: error.message })
+      throw error
+    }
+  }
+
+  // Public file access for teachers
+  async getPublicFiles(filters = {}) {
+    apiDebugger.info('FILES', 'Fetching public files', { filters })
+    
+    try {
+      const queryString = new URLSearchParams(filters).toString()
+      const result = await this.makePublicRequest(`/files/public${queryString ? `?${queryString}` : ''}`)
+      
+      if (result.success) {
+        apiDebugger.success('FILES', 'Public files fetched successfully', { count: result.files?.length || 0 })
+      } else {
+        apiDebugger.warning('FILES', 'Failed to fetch public files', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('FILES', 'Error fetching public files', { error: error.message })
+      throw error
+    }
+  }
+
+  // Get signed upload token
+  async getUploadToken(uploadData) {
+    apiDebugger.info('UPLOAD', 'Getting upload token', { uploadData })
+    
+    try {
+      const result = await this.makeRequest('/upload-token', {
+        method: 'POST',
+        body: JSON.stringify(uploadData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('UPLOAD', 'Upload token received', { 
+          cloudName: result.data?.cloudName,
+          hasSignature: !!result.data?.signature
+        })
+      } else {
+        apiDebugger.warning('UPLOAD', 'Failed to get upload token', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('UPLOAD', 'Error getting upload token', { error: error.message })
       throw error
     }
   }

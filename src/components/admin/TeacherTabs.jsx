@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
 import TeachersTable from './TeachersTable'
 
-const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
+const TeacherTabs = ({ selectedTeacher, onTeacherSelect, onTeachersLoaded }) => {
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -35,6 +35,11 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
           const teachers = response.teachers || []
           setTeachers(teachers)
           console.log('✅ [TEACHER_TABS] Teachers loaded successfully:', teachers.length)
+          
+          // Notify parent component that teachers are loaded
+          if (onTeachersLoaded) {
+            onTeachersLoaded(teachers)
+          }
           
           // If no teachers found, show a helpful message
           if (teachers.length === 0) {
@@ -105,7 +110,6 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
                 </div>
               ) : error ? (
                 <div>
-                  <h3 className="text-lg font-semibold text-neutral-800 mb-4">Teachers</h3>
                   <div className="text-center py-8">
                     <div className="text-error text-sm mb-4 max-w-md mx-auto">
                       {error}
@@ -139,8 +143,6 @@ const TeacherTabs = ({ selectedTeacher, onTeacherSelect }) => {
                 </div>
               ) : (
                 <div>
-                  <h3 className="text-lg font-semibold text-neutral-800 mb-4">Teachers</h3>
-      
       <div className="flex space-x-2 overflow-x-auto pb-2">
         {teachers.map((teacher, index) => (
           <motion.button

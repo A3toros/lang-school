@@ -69,6 +69,7 @@ const CoursesCarousel = ({ courses = [], title = "Our Courses", subtitle = "Choo
               prevCourse()
             }}
             className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-3 rounded-full transition-all duration-200 clickable"
+            title="Previous course"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -81,6 +82,7 @@ const CoursesCarousel = ({ courses = [], title = "Our Courses", subtitle = "Choo
               nextCourse()
             }}
             className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-3 rounded-full transition-all duration-200 clickable"
+            title="Next course"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -92,6 +94,24 @@ const CoursesCarousel = ({ courses = [], title = "Our Courses", subtitle = "Choo
             {currentCourse + 1} / {courses.length}
           </div>
         </motion.div>
+
+        {/* Dot Indicators */}
+        {courses.length > 1 && (
+          <div className="flex justify-center mt-6 space-x-2">
+            {courses.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setCurrentCourse(index)}
+                className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                  index === currentCourse 
+                    ? 'bg-primary-500' 
+                    : 'bg-gray-300 hover:bg-gray-400'
+                }`}
+                title={`View course ${index + 1}: ${courses[index].name}`}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Course Details Modal */}
         <AnimatePresence>

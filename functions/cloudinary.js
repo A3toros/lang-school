@@ -2,11 +2,19 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
 const cloudinary = require('cloudinary')
+const formidable = require('formidable').formidable
 
 // Configure Cloudinary
 cloudinary.config(process.env.CLOUDINARY_URL)
 
-exports.handler = async (event, context) => {
+const handler = async (event, context) => {
+  console.log('🔍 [CLOUDINARY_HANDLER] Request received', {
+    method: event.httpMethod,
+    path: event.path,
+    hasBody: !!event.body,
+    bodyLength: event.body?.length || 0
+  })
+
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -24,13 +32,26 @@ exports.handler = async (event, context) => {
     let user
     try {
       user = verifyToken(event)
+      console.log('✅ [CLOUDINARY_HANDLER] User authenticated', {
+        userId: user.userId,
+        role: user.role
+      })
     } catch (error) {
+      console.log('❌ [CLOUDINARY_HANDLER] Authentication failed', error.message)
       return errorResponse(401, 'Unauthorized')
     }
 
     // Route to appropriate handler
     if (path === '/api/cloudinary/upload' && method === 'POST') {
-      return await uploadImage(event, user)
+      // Check if this is a file upload (multipart) or image upload (JSON)
+      const contentType = event.headers['content-type'] || event.headers['Content-Type'] || ''
+      if (contentType.includes('multipart/form-data')) {
+        console.log('🔍 [CLOUDINARY_HANDLER] Routing to uploadFile')
+        return await uploadFile(event, user)
+      } else {
+        console.log('🔍 [CLOUDINARY_HANDLER] Routing to uploadImage')
+        return await uploadImage(event, user)
+      }
     } else if (path === '/api/cloudinary/delete' && method === 'DELETE') {
       return await deleteImage(event, user)
     } else if (path === '/api/cloudinary/upload-teacher-photo' && method === 'POST') {
@@ -48,20 +69,42 @@ exports.handler = async (event, context) => {
     } else if (path === '/api/cloudinary/cleanup-orphaned' && method === 'POST') {
       return await cleanupOrphanedImages(event, user)
     } else {
+      console.log('❌ [CLOUDINARY_HANDLER] Route not found', { path, method })
       return errorResponse(404, 'Not found')
     }
   } catch (error) {
-    console.error('Cloudinary API error:', error)
-    return errorResponse(500, 'Internal server error')
+    console.error('❌ [CLOUDINARY_HANDLER] Cloudinary API error:', error)
+    console.error('❌ [CLOUDINARY_HANDLER] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
+    return errorResponse(500, 'Internal server error: ' + error.message)
   }
 }
 
 // Upload image to Cloudinary
 async function uploadImage(event, user) {
   try {
+    console.log('🔍 [CLOUDINARY] Upload image called', {
+      userId: user.userId,
+      role: user.role,
+      hasBody: !!event.body,
+      bodyLength: event.body?.length || 0
+    })
+
     const { image, folder, public_id, transformations } = JSON.parse(event.body)
 
+    console.log('📋 [CLOUDINARY] Upload parameters', {
+      hasImage: !!image,
+      folder,
+      hasPublicId: !!public_id,
+      hasTransformations: !!transformations,
+      imageLength: image?.length || 0
+    })
+
     if (!image) {
+      console.log('❌ [CLOUDINARY] No image data provided')
       return errorResponse(400, 'Image data is required')
     }
 
@@ -78,7 +121,17 @@ async function uploadImage(event, user) {
       uploadOptions.transformation = transformations
     }
 
+    console.log('🔍 [CLOUDINARY] Upload options', uploadOptions)
+    console.log('🔍 [CLOUDINARY] CLOUDINARY_URL configured:', !!process.env.CLOUDINARY_URL)
+
     const result = await cloudinary.uploader.upload(image, uploadOptions)
+
+    console.log('✅ [CLOUDINARY] Upload successful', {
+      public_id: result.public_id,
+      secure_url: result.secure_url?.substring(0, 50) + '...',
+      width: result.width,
+      height: result.height
+    })
 
     return successResponse({
       public_id: result.public_id,
@@ -89,8 +142,88 @@ async function uploadImage(event, user) {
       bytes: result.bytes
     })
   } catch (error) {
-    console.error('Upload image error:', error)
-    return errorResponse(500, 'Failed to upload image')
+    console.error('❌ [CLOUDINARY] Upload image error:', error)
+    console.error('❌ [CLOUDINARY] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
+    return errorResponse(500, 'Failed to upload image: ' + error.message)
+  }
+}
+
+// Upload file to Cloudinary (handles multipart form data)
+async function uploadFile(event, user) {
+  try {
+    console.log('🔍 [CLOUDINARY] Upload file called', {
+      userId: user.userId,
+      role: user.role,
+      hasBody: !!event.body,
+      bodyLength: event.body?.length || 0
+    })
+
+    // Parse multipart form data
+    const form = formidable({
+      maxFileSize: 50 * 1024 * 1024, // 50MB limit
+      keepExtensions: true
+    })
+
+    const [fields, files] = await form.parse(event.body)
+    
+    console.log('📋 [CLOUDINARY] Parsed form data', {
+      fields: Object.keys(fields),
+      files: Object.keys(files)
+    })
+
+    const file = files.file?.[0]
+    const folder = fields.folder?.[0] || 'lang-school/files'
+    const resourceType = fields.resource_type?.[0] || 'raw'
+
+    if (!file) {
+      console.log('❌ [CLOUDINARY] No file provided')
+      return errorResponse(400, 'No file provided')
+    }
+
+    console.log('📤 [CLOUDINARY] Uploading file to Cloudinary', {
+      originalFilename: file.originalFilename,
+      filepath: file.filepath,
+      mimetype: file.mimetype,
+      size: file.size,
+      folder,
+      resourceType
+    })
+
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(file.filepath, {
+      folder: folder,
+      resource_type: resourceType,
+      use_filename: true,
+      unique_filename: true
+    })
+
+    console.log('✅ [CLOUDINARY] File uploaded successfully', {
+      publicId: result.public_id,
+      secureUrl: result.secure_url,
+      originalFilename: file.originalFilename
+    })
+
+    return successResponse({
+      success: true,
+      publicId: result.public_id,
+      secureUrl: result.secure_url,
+      originalFilename: file.originalFilename,
+      fileSize: file.size,
+      fileType: file.mimetype,
+      folder: result.folder
+    })
+
+  } catch (error) {
+    console.error('❌ [CLOUDINARY] Upload file error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    })
+    return errorResponse(500, 'Failed to upload file: ' + error.message)
   }
 }
 
@@ -435,7 +568,8 @@ async function cleanupOrphanedImages(event, user) {
   }
 }
 
-// Export functions for use in other modules
+// Export the handler for Netlify Functions
 module.exports = {
+  handler,
   deleteImageByPublicId
 }

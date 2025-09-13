@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
 import { getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo } from '../../utils/dateUtils'
+import draftManager from '../../utils/draftManager'
+import SaveWarningModal from '../common/SaveWarningModal'
 
 const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [schedule, setSchedule] = useState([])
@@ -29,9 +31,17 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [futureLessonData, setFutureLessonData] = useState(null)
   const [showLessonReport, setShowLessonReport] = useState(false)
   const [lessonReportData, setLessonReportData] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAutofillTip, setShowAutofillTip] = useState(false)
   const [autofillStudent, setAutofillStudent] = useState(null)
   const [autofillTimeout, setAutofillTimeout] = useState(null)
+  
+  // Draft mode state
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showSaveWarning, setShowSaveWarning] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [originalSchedule, setOriginalSchedule] = useState([])
 
   useEffect(() => {
     if (teacherId) {
@@ -53,8 +63,20 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const fetchSchedule = async () => {
     try {
       setLoading(true)
-    const response = await apiService.getTeacherSchedule(teacherId, weekStart)
-      setSchedule(response.schedules || [])
+      const response = await apiService.getTeacherSchedule(teacherId, weekStart)
+      const originalData = response.schedules || []
+      
+      // Store original schedule
+      setOriginalSchedule(originalData)
+      
+      // Apply draft changes if any
+      const scheduleWithDraft = draftManager.applyDraftToSchedule(originalData, teacherId, weekStart)
+      setSchedule(scheduleWithDraft)
+      
+      // Check if there are unsaved changes
+      const hasChanges = draftManager.hasUnsavedChanges()
+      setHasUnsavedChanges(hasChanges)
+      
     } catch (err) {
       setError('Failed to load schedule')
       console.error('Error fetching schedule:', err)
@@ -116,7 +138,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     setShowSuggestions(true)
     
     // Auto-fill if 3 or fewer students found - with debouncing
-    if (filtered.length <= 3 && filtered.length > 0) {
+    // Only show autofill if user has typed something (not empty input)
+    if (filtered.length <= 3 && filtered.length > 0 && input.trim().length > 0) {
       const firstStudent = filtered[0]
       console.log('🎯 [AUTOFILL] Showing tip for:', firstStudent.name, 'Input:', input)
       setSelectedStudent(firstStudent)
@@ -172,11 +195,16 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const handleCellDoubleClick = (dayIndex, timeSlot) => {
     console.log('🔍 [DOUBLE_CLICK] editMode:', editMode, 'dayIndex:', dayIndex, 'timeSlot:', timeSlot)
     
-    // Check if there's already a student in this slot
-    const existingSchedule = getStudentForSlot(dayIndex, timeSlot)
+    // Check if there's already a student in this slot (including deleted ones)
+    const existingSchedule = getAllItemsForSlot(dayIndex, timeSlot)
     console.log('🔍 [DOUBLE_CLICK] existingSchedule:', existingSchedule)
     
     if (existingSchedule) {
+      if (existingSchedule.is_deleted) {
+        // Don't allow actions on deleted items
+        return
+      }
+      
       if (editMode) {
         console.log('🔍 [DOUBLE_CLICK] Edit mode - calling handleDeleteLesson')
         // If in edit mode, delete the student
@@ -267,28 +295,52 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       return
     }
 
-    // Note: Backend will handle the actual validation of teacher-student relationships
-    // Frontend validation is minimal - just check if student exists
-    console.log('✅ [HANDLE_ADD_STUDENT] Student validation passed, proceeding to backend validation')
-
     try {
       const dayNumber = dayIndex !== null ? dayIndex : getDayNumber(timeSlotToUse.day)
       console.log('🔍 [HANDLE_ADD_STUDENT] dayNumber:', dayNumber, 'timeSlotToUse:', timeSlotToUse)
       
-      const scheduleData = {
-        teacher_id: teacherId,
-        student_id: studentToUse.id,
-        day_of_week: dayNumber,
-        time_slot: timeSlotToUse.time || timeSlotToUse,
-        week_start_date: weekStart
+      // Add to draft instead of directly to database
+      const lessonData = {
+        teacherId: teacherId,
+        studentId: studentToUse.id,
+        studentName: studentToUse.name,
+        dayOfWeek: dayNumber,
+        timeSlot: timeSlotToUse.time || timeSlotToUse,
+        weekStart: weekStart
       }
-      console.log('🔍 [HANDLE_ADD_STUDENT] scheduleData:', scheduleData)
-      console.log('🔍 [HANDLE_ADD_STUDENT] studentToUse.lessons_per_week:', studentToUse.lessons_per_week)
-
-      // Since lessons_per_week is now dynamic and starts at 0, always proceed directly
-      console.log('🔍 [HANDLE_ADD_STUDENT] Creating schedule directly (lessons_per_week is dynamic)')
-      await createSchedule(scheduleData)
-      console.log('✅ [HANDLE_ADD_STUDENT] createSchedule completed successfully')
+      
+      console.log('🔍 [HANDLE_ADD_STUDENT] Adding to draft:', lessonData)
+      const draftResult = draftManager.addLesson(lessonData)
+      console.log('🔍 [HANDLE_ADD_STUDENT] Draft result:', draftResult)
+      
+      // Update UI state directly without refetching
+      setHasUnsavedChanges(true)
+      
+      // Add the new lesson to the current schedule state
+      const newScheduleItem = {
+        id: lessonData.id || `temp_${Date.now()}_${Math.random()}`,
+        student_id: lessonData.studentId,
+        student_name: lessonData.studentName,
+        teacher_id: lessonData.teacherId,
+        day_of_week: lessonData.dayOfWeek,
+        time_slot: lessonData.timeSlot,
+        week_start_date: lessonData.weekStart,
+        attendance_status: 'scheduled',
+        is_draft: true // Mark as draft item
+      }
+      
+      setSchedule(prevSchedule => [...prevSchedule, newScheduleItem])
+      
+      // Reset UI state
+      setShowAddStudentModal(false)
+      setSelectedStudentId('')
+      setSelectedTimeSlot(null)
+      setEditingCell(null)
+      setStudentInput('')
+      setSelectedStudent(null)
+      setShowSuggestions(false)
+      
+      console.log('✅ [HANDLE_ADD_STUDENT] Added to draft successfully')
     } catch (err) {
       console.error('❌ [HANDLE_ADD_STUDENT] Error adding student to schedule:', err)
       alert('Failed to add student to schedule: ' + err.message)
@@ -371,6 +423,10 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     currentMonth.name + ' ' + currentMonth.year
 
   const getStudentForSlot = (dayOfWeek, timeSlot) => {
+    return schedule.find(s => s.day_of_week === dayOfWeek && s.time_slot === timeSlot && !s.is_deleted)
+  }
+
+  const getAllItemsForSlot = (dayOfWeek, timeSlot) => {
     return schedule.find(s => s.day_of_week === dayOfWeek && s.time_slot === timeSlot)
   }
 
@@ -378,14 +434,25 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const fetchLessonReport = async (schedule) => {
     try {
       // Calculate the actual lesson date based on week_start_date and day_of_week
+      // Use the same date calculation logic as the teacher panel
       const weekStart = new Date(schedule.week_start_date)
       const lessonDate = new Date(weekStart)
-      lessonDate.setDate(weekStart.getDate() + (schedule.day_of_week - 1)) // day_of_week is 1-based
+      lessonDate.setDate(weekStart.getDate() + schedule.day_of_week) // day_of_week is 0-based (Monday=0, Tuesday=1, etc.)
+      
+      // Format the date consistently with the teacher panel
+      const lessonDateStr = lessonDate.getFullYear() + '-' + 
+        String(lessonDate.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(lessonDate.getDate()).padStart(2, '0')
+      
+      console.log('🔍 [ADMIN_FETCH_REPORT] Schedule:', schedule)
+      console.log('🔍 [ADMIN_FETCH_REPORT] Week start:', schedule.week_start_date)
+      console.log('🔍 [ADMIN_FETCH_REPORT] Day of week:', schedule.day_of_week)
+      console.log('🔍 [ADMIN_FETCH_REPORT] Calculated lesson date:', lessonDateStr)
       
       const response = await apiService.getReports({
         student_id: schedule.student_id,
         teacher_id: schedule.teacher_id,
-        lesson_date: lessonDate.toISOString().split('T')[0], // Convert to YYYY-MM-DD format
+        lesson_date: lessonDateStr, // Use the formatted date string
         time_slot: schedule.time_slot
       })
       
@@ -422,25 +489,110 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
   }
 
-
   const confirmFutureLessonDeletion = async () => {
     if (futureLessonData) {
       try {
-        const response = await apiService.deleteSchedule(futureLessonData.id)
-        
-        if (response.success) {
-          await fetchSchedule()
-          alert('Lesson deleted successfully')
+        // Check if this is a draft item (temporary addition)
+        if (futureLessonData.is_draft) {
+          // Remove from draft additions
+          const draft = draftManager.getDraftChanges()
+          if (draft) {
+            draft.additions = draft.additions.filter(
+              addition => !(addition.dayOfWeek === futureLessonData.day_of_week && 
+                          addition.timeSlot === futureLessonData.time_slot)
+            )
+            draftManager.saveDraftChanges(draft)
+            setHasUnsavedChanges(draft.additions.length > 0 || draft.deletions.length > 0)
+          }
         } else {
-          console.error('Delete failed:', response.error)
-          alert('Failed to delete lesson: ' + response.error)
+          // Add to draft deletions
+          const lessonData = {
+            teacherId: teacherId,
+            dayOfWeek: futureLessonData.day_of_week,
+            timeSlot: futureLessonData.time_slot,
+            weekStart: weekStart
+          }
+          
+          console.log('🔍 [DELETE] Calling draftManager.deleteLesson with:', futureLessonData.id, lessonData)
+          const deleteResult = draftManager.deleteLesson(futureLessonData.id, lessonData)
+          console.log('🔍 [DELETE] Delete result:', deleteResult)
+          setHasUnsavedChanges(true)
+          
+          // Also update the draft state to ensure it's saved
+          const draft = draftManager.getDraftChanges()
+          console.log('🔍 [DELETE] Draft after deletion:', draft)
+          if (draft) {
+            draftManager.saveDraftChanges(draft)
+          }
         }
+        
       } catch (err) {
         console.error('Exception:', err)
         alert('Error deleting lesson: ' + err.message)
+        setShowFutureLessonConfirm(false)
+        setFutureLessonData(null)
+        return
       }
+      
+      // Update UI state directly without refetching (only if no error occurred)
+      if (futureLessonData.is_draft) {
+        // Remove from current schedule state
+        setSchedule(prevSchedule => 
+          prevSchedule.filter(item => 
+            !(item.day_of_week === futureLessonData.day_of_week && 
+              item.time_slot === futureLessonData.time_slot)
+          )
+        )
+      } else {
+        // Mark as deleted in current schedule state
+        setSchedule(prevSchedule => 
+          prevSchedule.map(item => 
+            item.id === futureLessonData.id 
+              ? { ...item, is_deleted: true, attendance_status: 'deleted' }
+              : item
+          )
+        )
+      }
+      
+      alert('Lesson marked for deletion')
       setShowFutureLessonConfirm(false)
       setFutureLessonData(null)
+    }
+  }
+
+  // Delete report function
+  const handleDeleteReport = async () => {
+    if (!lessonReportData?.report) {
+      alert('No report to delete')
+      return
+    }
+
+    try {
+      const response = await apiService.deleteReport(lessonReportData.report.id)
+      
+      if (response.success) {
+        // Reset the lesson status to 'scheduled' (remove attendance status)
+        await apiService.markAttendance({
+          schedule_id: lessonReportData.schedule.id,
+          status: 'scheduled'
+        })
+        
+        // Refresh the schedule to show updated status
+        await fetchSchedule()
+        
+        // Close the modal
+        setShowLessonReport(false)
+        setLessonReportData(null)
+        setShowDeleteConfirm(false)
+        
+        alert('Report deleted successfully. Lesson has been reset for the teacher to submit a new report.')
+      } else {
+        console.error('Delete report failed:', response.error)
+        alert('Failed to delete report: ' + response.error)
+      }
+    } catch (err) {
+      console.error('Exception deleting report:', err)
+      alert('Error deleting report: ' + err.message)
     }
   }
 
@@ -571,14 +723,26 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
 
     if (existingSchedule) {
+      const isDeleted = existingSchedule.is_deleted
       return (
         <div 
-          className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-1"
-          onDoubleClick={() => handleCellDoubleClick(dayIndex, timeSlot)}
-          title={editMode ? "Double-click to remove student" : "Double-click to view lesson report"}
+          className={`flex items-center justify-between cursor-pointer hover:bg-gray-50 p-1 ${
+            isDeleted ? 'opacity-50 bg-red-50 line-through' : ''
+          }`}
+          onDoubleClick={() => !isDeleted && handleCellDoubleClick(dayIndex, timeSlot)}
+          title={
+            isDeleted 
+              ? "Marked for deletion (will be removed when saved)"
+              : editMode 
+                ? "Double-click to remove student" 
+                : "Double-click to view lesson report"
+          }
         >
-          <span className="text-sm font-medium">{existingSchedule.student_name}</span>
-          {editMode && (
+          <span className={`text-sm font-medium ${isDeleted ? 'text-red-600' : ''}`}>
+            {existingSchedule.student_name}
+            {isDeleted && <span className="ml-1 text-xs text-red-500">(deleted)</span>}
+          </span>
+          {editMode && !isDeleted && (
             <button
               onClick={() => handleDeleteLesson(existingSchedule)}
               className="text-red-500 hover:text-red-700 text-xs"
@@ -621,33 +785,132 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   const handlePreviousWeek = async () => {
     if (onWeekChange && weekStart && !isTransitioning) {
-      setIsTransitioning(true)
-      const previousWeek = subtractDays(weekStart, 7)
-      onWeekChange(previousWeek)
-      // Reset transition state after animation
-      setTimeout(() => setIsTransitioning(false), 300)
+      handleNavigationAttempt('previousWeek')
     }
   }
 
   const handleNextWeek = async () => {
     if (onWeekChange && weekStart && !isTransitioning) {
-      setIsTransitioning(true)
-      const nextWeek = addDays(weekStart, 7)
-      onWeekChange(nextWeek)
-      // Reset transition state after animation
-      setTimeout(() => setIsTransitioning(false), 300)
+      handleNavigationAttempt('nextWeek')
     }
   }
 
   const handleCurrentWeek = async () => {
     if (onWeekChange && !isTransitioning) {
-      setIsTransitioning(true)
-      const today = new Date()
-      const currentWeekStart = today.toISOString().split('T')[0]
-      onWeekChange(currentWeekStart)
-      // Reset transition state after animation
-      setTimeout(() => setIsTransitioning(false), 300)
+      handleNavigationAttempt('currentWeek')
     }
+  }
+
+  // Draft mode functions
+  const saveChangesToDatabase = async () => {
+    console.log('🔍 [SAVE] Save button clicked, hasUnsavedChanges:', hasUnsavedChanges)
+    
+    if (!hasUnsavedChanges) {
+      console.log('❌ [SAVE] No unsaved changes, returning early')
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      const draft = draftManager.getDraftChanges()
+      console.log('🔍 [SAVE] Draft data:', draft)
+      console.log('🔍 [SAVE] localStorage draft:', localStorage.getItem('schedule_draft_changes'))
+      
+      if (!draft) {
+        console.log('❌ [SAVE] No draft data found')
+        console.log('🔍 [SAVE] Checking if there are any changes in schedule state...')
+        // Check if there are any draft items in the current schedule
+        const draftItems = schedule.filter(item => item.is_draft)
+        const deletedItems = schedule.filter(item => item.is_deleted)
+        console.log('🔍 [SAVE] Draft items in schedule:', draftItems.length)
+        console.log('🔍 [SAVE] Deleted items in schedule:', deletedItems.length)
+        return
+      }
+
+      // Process additions
+      for (const addition of draft.additions) {
+        await apiService.createSchedule({
+          student_id: addition.studentId,
+          teacher_id: addition.teacherId,
+          day_of_week: addition.dayOfWeek,
+          time_slot: addition.timeSlot,
+          week_start_date: addition.weekStart
+        })
+      }
+
+      // Process deletions
+      console.log('🔍 [SAVE] Processing deletions:', draft.deletions.length)
+      for (const deletion of draft.deletions) {
+        console.log('🔍 [SAVE] Deleting schedule:', deletion.scheduleId)
+        await apiService.deleteSchedule(deletion.scheduleId)
+      }
+
+      // Clear draft and refresh
+      draftManager.clearDraftChanges()
+      setHasUnsavedChanges(false)
+      await fetchSchedule()
+
+      console.log('✅ [DRAFT] Changes saved successfully')
+    } catch (error) {
+      console.error('❌ [DRAFT] Failed to save changes:', error)
+      alert('Failed to save changes. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const discardChanges = () => {
+    draftManager.clearDraftChanges()
+    setHasUnsavedChanges(false)
+    fetchSchedule()
+    console.log('🗑️ [DRAFT] Changes discarded')
+  }
+
+  const handleNavigationAttempt = (action) => {
+    if (hasUnsavedChanges) {
+      setPendingAction(action)
+      setShowSaveWarning(true)
+    } else {
+      executeAction(action)
+    }
+  }
+
+  const executeAction = (action) => {
+    if (action === 'previousWeek') {
+      if (onWeekChange && weekStart && !isTransitioning) {
+        setIsTransitioning(true)
+        const previousWeek = subtractDays(weekStart, 7)
+        onWeekChange(previousWeek)
+        setTimeout(() => setIsTransitioning(false), 300)
+      }
+    } else if (action === 'nextWeek') {
+      if (onWeekChange && weekStart && !isTransitioning) {
+        setIsTransitioning(true)
+        const nextWeek = addDays(weekStart, 7)
+        onWeekChange(nextWeek)
+        setTimeout(() => setIsTransitioning(false), 300)
+      }
+    } else if (action === 'currentWeek') {
+      if (onWeekChange && !isTransitioning) {
+        setIsTransitioning(true)
+        const today = new Date()
+        const currentWeekStart = today.toISOString().split('T')[0]
+        onWeekChange(currentWeekStart)
+        setTimeout(() => setIsTransitioning(false), 300)
+      }
+    }
+    // Add more actions as needed
+  }
+
+  const handleSaveWarningResponse = (response) => {
+    if (response === 'save') {
+      saveChangesToDatabase().then(() => executeAction(pendingAction))
+    } else if (response === 'discard') {
+      discardChanges()
+      executeAction(pendingAction)
+    }
+    setShowSaveWarning(false)
+    setPendingAction(null)
   }
 
   const getAttendanceStatus = (student) => {
@@ -661,6 +924,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         return 'bg-success text-white'
       case 'absent':
         return 'bg-error text-white'
+      case 'absent_warned':
+        return 'bg-yellow-500 text-white'
       default:
         return 'bg-neutral-200 text-neutral-700'
     }
@@ -766,7 +1031,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-neutral-700">Read Mode</span>
+              <span className="text-xs sm:text-sm font-medium text-neutral-700">Read Mode</span>
               <button
                 onClick={() => setEditMode(!editMode)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
@@ -779,23 +1044,27 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                   }`}
                 />
               </button>
-              <span className="text-sm font-medium text-neutral-700">Edit Mode</span>
+              <span className="text-xs sm:text-sm font-medium text-neutral-700">Edit Mode</span>
             </div>
-            {editMode && (
-              <button className="btn-primary text-sm">
-                Save Changes
-              </button>
-            )}
+              {editMode && (
+                <button 
+                  className="btn-primary text-sm"
+                  onClick={saveChangesToDatabase}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              )}
           </div>
         </div>
       </div>
 
       {/* Schedule Table */}
-      <div className="overflow-x-auto">
+      <div className="w-full">
         <AnimatePresence mode="wait">
           <motion.table 
             key={weekStart} 
-            className="w-full"
+            className="w-full table-fixed"
             variants={tableVariants}
             initial="initial"
             animate="animate"
@@ -805,8 +1074,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
             <thead className="bg-neutral-50">
               {/* Month and Year Row */}
               <tr>
-                <th className="px-4 py-2 text-left text-sm font-semibold text-neutral-800 w-24"></th>
-                <th colSpan="7" className="px-4 py-2 text-center text-lg font-bold text-neutral-800">
+                <th className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-left text-xs sm:text-sm font-semibold text-neutral-800 w-12 sm:w-16 md:w-24"></th>
+                <th colSpan="7" className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-center text-sm sm:text-base md:text-lg font-bold text-neutral-800">
                   <motion.span
                     key={weekMonth}
                     initial={{ opacity: 0, y: 10 }}
@@ -820,7 +1089,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
               </tr>
               {/* Day Names and Dates Row */}
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-neutral-700 w-24">Time</th>
+                <th className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-left text-2xs sm:text-xs md:text-sm font-medium text-neutral-700 w-10 sm:w-12 md:w-16">Time</th>
                 {days.map((day, index) => {
                   const dayInfo = weekInfo?.days?.[index]
                   const isCurrentMonth = dayInfo?.isCurrentMonth ?? true
@@ -829,7 +1098,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                   return (
                     <motion.th 
                       key={`${day}-${weekStart}`}
-                      className={`px-4 py-3 text-center text-sm font-medium min-w-[120px] ${
+                      className={`px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-center font-medium min-w-0 ${
                         isCurrentMonth 
                           ? 'text-neutral-700' 
                           : 'text-neutral-400 bg-neutral-100'
@@ -838,13 +1107,13 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: index * 0.05 }}
                     >
-                      <div className="flex flex-col">
-                        <div className={`font-semibold ${!isCurrentMonth ? 'opacity-50' : ''}`}>
+                      <div className="flex flex-col min-w-0">
+                        <div className={`font-semibold text-2xs sm:text-xs md:text-sm truncate ${!isCurrentMonth ? 'opacity-50' : ''}`}>
                           {day}
                         </div>
                         {weekDates.length > index && (
                           <motion.div 
-                            className={`text-xs mt-1 ${isCurrentMonth ? 'text-neutral-500' : 'text-neutral-400'}`}
+                            className={`text-2xs sm:text-xs mt-0.5 sm:mt-1 truncate ${isCurrentMonth ? 'text-neutral-500' : 'text-neutral-400'}`}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ duration: 0.2, delay: 0.1 + index * 0.05 }}
@@ -867,7 +1136,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.3, delay: timeIndex * 0.02 }}
                 >
-                  <td className="px-4 py-3 text-sm text-neutral-600 font-medium">
+                  <td className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-2xs sm:text-xs md:text-sm text-neutral-600 font-medium">
                     {timeSlot}
                   </td>
                   {days.map((day, dayIndex) => {
@@ -881,7 +1150,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                     return (
                       <motion.td 
                         key={`${dayIndex}-${timeIndex}-${weekStart}`}
-                        className={`px-2 py-2 h-16 relative ${!isCurrentMonth ? 'bg-neutral-50' : ''}`}
+                        className={`px-1 sm:px-2 py-1 h-10 sm:h-12 md:h-14 relative ${!isCurrentMonth ? 'bg-neutral-50' : ''}`}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.2, delay: (timeIndex * 0.02) + (dayIndex * 0.01) }}
@@ -891,7 +1160,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                           {student ? (
                             <motion.div
                               key={`student-${student.id}-${weekStart}`}
-                              className={`p-2 rounded-lg text-xs font-medium text-center transition-all duration-200 ${getStatusColor(status)} ${
+                              className={`p-1 rounded-lg text-2xs font-medium text-center transition-all duration-200 ${getStatusColor(status)} ${
                                 isEditable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
                               }`}
                               whileHover={isEditable ? { scale: 1.02 } : {}}
@@ -902,13 +1171,13 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               transition={{ duration: 0.2 }}
                               onClick={editMode && isEditable ? () => handleDeleteLesson(student) : () => fetchLessonReport(student)}
                             >
-                              <div className="truncate">{student.student_name}</div>
+                              <div className="truncate text-2xs">{student.student_name}</div>
                               {editMode && isEditable ? (
-                                <div className="mt-1 text-xs opacity-75">
+                                <div className="mt-1 text-2xs opacity-75">
                                   Click to remove
                                 </div>
                               ) : (
-                                <div className="mt-1 text-xs opacity-75">
+                                <div className="mt-1 text-2xs opacity-75">
                                   Click to view report
                                 </div>
                               )}
@@ -922,7 +1191,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               exit={{ opacity: 0, scale: 0.8 }}
                               transition={{ duration: 0.2 }}
                             >
-                              {renderCellContent(dayOfWeek, timeSlot, null)}
+                              {renderCellContent(dayOfWeek, timeSlot, getAllItemsForSlot(dayOfWeek, timeSlot))}
                             </motion.div>
                           ) : (
                             <motion.div 
@@ -959,6 +1228,10 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-error rounded"></div>
             <span>Absent</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-4 h-4 bg-yellow-500 rounded"></div>
+            <span>Absent Warned</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-neutral-200 rounded"></div>
@@ -1039,7 +1312,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                 <strong>Date:</strong> {(() => {
                   const weekStart = new Date(lessonReportData.schedule.week_start_date)
                   const lessonDate = new Date(weekStart)
-                  lessonDate.setDate(weekStart.getDate() + (lessonReportData.schedule.day_of_week - 1))
+                  lessonDate.setDate(weekStart.getDate() + lessonReportData.schedule.day_of_week) // day_of_week is 0-based
                   return lessonDate.toLocaleDateString('en-US', {
                     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                     year: 'numeric',
@@ -1090,11 +1363,58 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
               >
                 Close
               </button>
+              {lessonReportData.report && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                >
+                  Delete Report
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
+
+      {/* Delete Report Confirmation Modal */}
+      {showDeleteConfirm && lessonReportData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-red-600">
+              Delete Lesson Report
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete this lesson report?
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-yellow-800">
+                <strong>This will:</strong>
+              </p>
+              <ul className="text-sm text-yellow-700 mt-2 list-disc list-inside">
+                <li>Delete the report from the database</li>
+                <li>Reset the lesson status to "Scheduled"</li>
+                <li>Allow the teacher to submit a new report</li>
+                <li>Reset attendance status (absent/completed/warned)</li>
+              </ul>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteReport}
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
+              >
+                Delete Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Future Lesson Deletion Modal */}
       {showFutureLessonConfirm && futureLessonData && (
@@ -1126,6 +1446,17 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           </div>
         </div>
       )}
+
+
+      {/* Save Warning Modal */}
+      <SaveWarningModal
+        isOpen={showSaveWarning}
+        onClose={() => setShowSaveWarning(false)}
+        onSave={() => handleSaveWarningResponse('save')}
+        onDiscard={() => handleSaveWarningResponse('discard')}
+        pendingAction={pendingAction}
+        changesSummary={draftManager.getChangesSummary()}
+      />
     </div>
   )
 }

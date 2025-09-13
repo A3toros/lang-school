@@ -67,3 +67,13 @@ body {
 .touch-target {
   @apply min-h-[44px] min-w-[44px];
 }
+
+/* Hide scrollbars */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}

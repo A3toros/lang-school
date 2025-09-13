@@ -131,7 +131,7 @@ const TeacherSchedule = ({
           </svg>
         </button>
         
-        <h3 className="text-lg font-semibold text-neutral-800">
+        <h3 className="text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-neutral-800">
           Week of {weekDates[0].toLocaleDateString()} - {weekDates[6].toLocaleDateString()}
         </h3>
         
@@ -146,20 +146,20 @@ const TeacherSchedule = ({
       </div>
 
       {/* Schedule Table */}
-      <div className="overflow-x-auto">
+      <div className="w-full">
         <table className="w-full table-fixed">
           <thead>
             <tr className="border-b border-neutral-200">
-              <th className="w-24 p-2 text-left text-xs font-medium text-neutral-600 uppercase tracking-wider">
+              <th className="w-10 sm:w-12 md:w-16 p-1 text-left text-2xs sm:text-xs md:text-sm font-medium text-neutral-600 uppercase tracking-wider">
                 Time
               </th>
               {weekDates.map((date, index) => (
-                <th key={index} className="p-2 text-center text-xs font-medium text-neutral-600 uppercase tracking-wider">
-                  <div>
-                    <div className="font-semibold">
+                <th key={index} className="p-1 text-center font-medium text-neutral-600 uppercase tracking-wider min-w-0">
+                  <div className="flex flex-col min-w-0">
+                    <div className="font-semibold text-2xs sm:text-xs md:text-sm truncate">
                       {date.toLocaleDateString('en-US', { weekday: 'short' })}
                     </div>
-                    <div className="text-neutral-500">
+                    <div className="text-neutral-500 text-2xs sm:text-xs mt-0.5 sm:mt-1 truncate">
                       {date.getDate()}
                     </div>
                   </div>
@@ -170,7 +170,7 @@ const TeacherSchedule = ({
           <tbody className="divide-y divide-neutral-200">
             {timeSlots.map((timeSlot, timeIndex) => (
               <tr key={timeIndex} className="hover:bg-neutral-50">
-                <td className="p-2 text-xs text-neutral-600 font-mono">
+                <td className="p-1 text-2xs sm:text-xs md:text-sm text-neutral-600 font-mono">
                   {timeSlot}
                 </td>
                 {weekDates.map((date, dayIndex) => {
@@ -184,7 +184,7 @@ const TeacherSchedule = ({
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => onStudentClick(student, date.toISOString().split('T')[0], timeSlot)}
-                          className={`w-full p-2 rounded text-xs font-medium transition-all duration-200 ${getAttendanceStatus(student.attendance_status)}`}
+                          className={`w-full p-1 rounded text-2xs font-medium transition-all duration-200 ${getAttendanceStatus(student.attendance_status)}`}
                         >
                           <div className="truncate">
                             {student.student_name}

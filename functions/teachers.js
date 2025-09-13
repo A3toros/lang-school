@@ -666,23 +666,65 @@ async function getTeacherStats(event, user) {
   }
 }
 
-// Get random teachers for showcase
+// Get teachers for showcase (supports random, featured, and alphabetical)
 async function getRandomTeachers(event, user) {
   try {
     const count = parseInt(event.path.split('/')[4]) || 3
 
-    const queryText = `
-      SELECT t.*
-      FROM teachers t
-      WHERE t.is_active = true
-      ORDER BY RANDOM()
-      LIMIT $1
+    // First, get the showcase settings to determine rotation type
+    const settingsQuery = `
+      SELECT rotation_type FROM teacher_showcase_settings 
+      WHERE is_active = true 
+      ORDER BY created_at DESC 
+      LIMIT 1
     `
+    const settingsResult = await query(settingsQuery)
+    const rotationType = settingsResult.rows.length > 0 ? settingsResult.rows[0].rotation_type : 'random'
+
+    let queryText
+    let params = [count]
+
+    if (rotationType === 'featured') {
+      // Get featured teachers in display order
+      queryText = `
+        SELECT t.*
+        FROM teachers t
+        INNER JOIN featured_teachers ft ON t.id = ft.teacher_id
+        WHERE t.is_active = true AND ft.is_active = true
+        ORDER BY ft.display_order
+        LIMIT $1
+      `
+    } else if (rotationType === 'alphabetical') {
+      // Get teachers in alphabetical order
+      queryText = `
+        SELECT t.*
+        FROM teachers t
+        WHERE t.is_active = true
+        ORDER BY t.name
+        LIMIT $1
+      `
+    } else {
+      // Default to random selection
+      queryText = `
+        SELECT t.*
+        FROM teachers t
+        WHERE t.is_active = true
+        ORDER BY RANDOM()
+        LIMIT $1
+      `
+    }
     
-    const result = await query(queryText, [count])
+    const result = await query(queryText, params)
+    
+    console.log(`✅ [TEACHERS] Teachers fetched for showcase`, {
+      rotationType,
+      count: result.rows.length,
+      teacherIds: result.rows.map(t => t.id)
+    })
+    
     return successResponse({ teachers: result.rows })
   } catch (error) {
-    console.error('Get random teachers error:', error)
+    console.error('Get teachers for showcase error:', error)
     return errorResponse(500, 'Failed to fetch teachers')
   }
 }

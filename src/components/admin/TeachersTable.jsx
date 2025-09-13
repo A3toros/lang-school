@@ -179,12 +179,12 @@ const TeachersTable = () => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6 gap-4">
         <div>
-          <h3 className="text-xl font-semibold text-neutral-800">Teachers Overview</h3>
+          <h3 className="text-lg sm:text-xl font-semibold text-neutral-800">Teachers Overview</h3>
           {dateRange.startDate && dateRange.endDate && (
-            <p className="text-sm text-neutral-600 mt-1">
+            <p className="text-xs sm:text-sm text-neutral-600 mt-1">
               Showing lessons from {formatDate(dateRange.startDate)} to {formatDate(dateRange.endDate)}
               {filtering && <span className="ml-2 text-primary-600">(Filtering...)</span>}
             </p>
@@ -192,29 +192,29 @@ const TeachersTable = () => {
         </div>
         
         {/* Date Range Picker */}
-        <div className="flex gap-4 items-center">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-start sm:items-center">
           <div className="flex gap-2 items-center">
-            <label className="text-sm font-medium text-neutral-700">From:</label>
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">From:</label>
             <input
               type="date"
               value={dateRange.startDate}
               onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-              className="px-3 py-1 border border-neutral-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-2 sm:px-3 py-1 border border-neutral-300 rounded-md text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div className="flex gap-2 items-center">
-            <label className="text-sm font-medium text-neutral-700">To:</label>
+            <label className="text-xs sm:text-sm font-medium text-neutral-700">To:</label>
             <input
               type="date"
               value={dateRange.endDate}
               onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-              className="px-3 py-1 border border-neutral-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-2 sm:px-3 py-1 border border-neutral-300 rounded-md text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           {(dateRange.startDate || dateRange.endDate) && (
             <button
               onClick={() => setDateRange({ startDate: '', endDate: '' })}
-              className="px-3 py-1 text-sm text-neutral-600 hover:text-neutral-800 underline"
+              className="px-2 sm:px-3 py-1 text-xs sm:text-sm text-neutral-600 hover:text-neutral-800 underline"
             >
               Clear Filter
             </button>
@@ -223,15 +223,15 @@ const TeachersTable = () => {
       </div>
 
       {/* Teachers Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="w-full">
+        <table className="w-full table-fixed">
           <thead>
             <tr className="border-b border-neutral-200">
-              <th className="text-left py-3 px-4 font-semibold text-neutral-700">Teacher</th>
-              <th className="text-left py-3 px-4 font-semibold text-neutral-700">Students</th>
-              <th className="text-left py-3 px-4 font-semibold text-neutral-700">Lessons Completed</th>
-              <th className="text-left py-3 px-4 font-semibold text-neutral-700">Attendance Rate</th>
-              <th className="text-left py-3 px-4 font-semibold text-neutral-700">Actions</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 w-1/3 sm:w-auto">Teacher</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden sm:table-cell">Students</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden md:table-cell">Lessons</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden lg:table-cell">Attendance</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 w-1/3 sm:w-auto">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -248,44 +248,54 @@ const TeachersTable = () => {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="py-4 px-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                        <span className="text-sm font-semibold text-primary-700">
+                  <td className="py-1 sm:py-2 px-1 sm:px-2">
+                    <div className="flex items-center space-x-1 sm:space-x-2">
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-primary-100 flex items-center justify-center">
+                        <span className="text-2xs font-semibold text-primary-700">
                           {teacher.name.split(' ').map(n => n[0]).join('')}
                         </span>
                       </div>
-                      <div>
-                        <div className="font-medium text-neutral-800">{teacher.name}</div>
-                        <div className="text-sm text-neutral-500">{teacher.email}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-2xs text-neutral-800 truncate">{teacher.name}</div>
+                        <div className="text-2xs text-neutral-500 truncate">{teacher.email}</div>
+                        {/* Mobile: Show stats inline */}
+                        <div className="sm:hidden mt-1 space-x-1">
+                          <span className="inline-flex items-center px-1 py-0.5 rounded-full text-2xs font-medium bg-primary-100 text-primary-800">
+                            {teacher.student_count || 0} students
+                          </span>
+                          <span className="text-2xs text-neutral-600">
+                            {getLessonCount(teacher.id)} lessons
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </td>
                   
-                  <td className="py-4 px-4">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                  <td className="py-1 sm:py-2 px-1 sm:px-2 hidden sm:table-cell">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-primary-100 text-primary-800">
                       {teacher.student_count || 0} students
                     </span>
                   </td>
                   
-                  <td className="py-4 px-4">
-                    <span className="text-sm font-medium text-neutral-800">
+                  <td className="py-1 sm:py-2 px-1 sm:px-2 hidden md:table-cell">
+                    <span className="text-2xs font-medium text-neutral-800">
                       {getLessonCount(teacher.id)}
                     </span>
                   </td>
                   
-                  <td className="py-4 px-4">
-                    <span className="text-sm font-medium text-neutral-800">
+                  <td className="py-1 sm:py-2 px-1 sm:px-2 hidden lg:table-cell">
+                    <span className="text-2xs font-medium text-neutral-800">
                       {stats?.attendance_rate ? `${stats.attendance_rate}%` : 'N/A'}
                     </span>
                   </td>
                   
-                  <td className="py-4 px-4">
+                  <td className="py-1 sm:py-2 px-1 sm:px-2">
                     <button
                       onClick={() => toggleTeacher(teacher.id)}
-                      className="inline-flex items-center px-3 py-1.5 border border-neutral-300 rounded-md text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="inline-flex items-center px-1 sm:px-2 py-0.5 sm:py-1 border border-neutral-300 rounded-md text-2xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
-                      {isExpanded ? 'Hide Students' : 'Show Students'}
+                      <span className="hidden sm:inline">{isExpanded ? 'Hide Students' : 'Show Students'}</span>
+                      <span className="sm:hidden">{isExpanded ? 'Hide' : 'Show'}</span>
                       <motion.svg
                         className="ml-2 w-4 h-4"
                         animate={{ rotate: isExpanded ? 180 : 0 }}

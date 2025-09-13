@@ -16,12 +16,22 @@ exports.handler = async (event, context) => {
   const method = event.httpMethod
 
   try {
-    // Verify authentication for all routes
-    let user
-    try {
-      user = verifyToken(event)
-    } catch (error) {
-      return errorResponse(401, 'Unauthorized')
+    // Check if this is a public endpoint that doesn't require authentication
+    let user = null
+    let isPublicEndpoint = false
+
+    if ((path === '/api/content/mission' && method === 'GET') || 
+        (path === '/api/content/courses' && method === 'GET') ||
+        (path === '/api/content/showcase/public' && method === 'GET')) {
+      // Mission content, courses, and public showcase settings are public - no authentication required
+      isPublicEndpoint = true
+    } else {
+      // All other routes require authentication
+      try {
+        user = verifyToken(event)
+      } catch (error) {
+        return errorResponse(401, 'Unauthorized')
+      }
     }
 
     // Route to appropriate handler
@@ -43,6 +53,9 @@ exports.handler = async (event, context) => {
       return await getShowcaseSettings(event, user)
     } else if (path === '/api/content/showcase' && method === 'PUT') {
       return await updateShowcaseSettings(event, user)
+    } else if (path === '/api/content/showcase/public' && method === 'GET') {
+      // Public access to showcase settings (no authentication required)
+      return await getShowcaseSettings(event, null)
     } else if (path === '/api/content/featured-teachers' && method === 'POST') {
       return await setFeaturedTeachers(event, user)
     } else if (path.match(/^\/api\/content\/courses\/\d+\/toggle$/) && method === 'PUT') {
@@ -63,8 +76,9 @@ exports.handler = async (event, context) => {
 // Get mission content
 async function getMissionContent(event, user) {
   console.log('🔍 [CONTENT] getMissionContent called', {
-    userId: user.userId,
-    role: user.role
+    userId: user?.userId || 'public',
+    role: user?.role || 'public',
+    isPublicAccess: !user
   })
 
   try {
@@ -175,8 +189,9 @@ async function updateMissionContent(event, user) {
 // Get all courses
 async function getCourses(event, user) {
   console.log('🔍 [CONTENT] getCourses called', {
-    userId: user.userId,
-    role: user.role,
+    userId: user?.userId || 'public',
+    role: user?.role || 'public',
+    isPublicAccess: !user,
     queryParams: event.queryStringParameters
   })
 
@@ -209,7 +224,16 @@ async function getCourses(event, user) {
     
     console.log('✅ [CONTENT] Courses fetched successfully', {
       count: result.rows.length,
-      courses: result.rows.map(c => ({ id: c.id, name: c.name, is_active: c.is_active, display_order: c.display_order }))
+      courses: result.rows.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        description: c.description,
+        background_image: c.background_image,
+        background_image_public_id: c.background_image_public_id,
+        detailed_description: c.detailed_description,
+        is_active: c.is_active, 
+        display_order: c.display_order 
+      }))
     })
 
     return successResponse({ courses: result.rows })
@@ -411,11 +435,11 @@ async function deleteCourse(event, user) {
   }
 }
 
-// Get teacher showcase settings
+// Get teacher showcase settings (public access)
 async function getShowcaseSettings(event, user) {
   console.log('🔍 [CONTENT] getShowcaseSettings called', {
-    userId: user.userId,
-    role: user.role
+    userId: user?.userId || 'public',
+    role: user?.role || 'public'
   })
 
   try {

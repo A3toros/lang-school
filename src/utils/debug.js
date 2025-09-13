@@ -1,7 +1,7 @@
 // Comprehensive API debugging utility
 class ApiDebugger {
   constructor() {
-    this.isEnabled = process.env.NODE_ENV === 'development' || localStorage.getItem('api-debug') === 'true'
+    this.isEnabled = import.meta.env.DEV || localStorage.getItem('api-debug') === 'true'
     this.logs = []
     this.maxLogs = 100
   }
