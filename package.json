@@ -21,7 +21,6 @@
   "dependencies": {
     "cloudinary": "^1.41.3",
     "dotenv": "^17.2.2",
-    "formidable": "^3.5.1",
     "framer-motion": "^10.16.4",
     "g": "^2.0.1",
     "jsonwebtoken": "^9.0.2",

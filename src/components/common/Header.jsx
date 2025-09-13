@@ -84,7 +84,7 @@ const Header = ({ onLogin, loginError }) => {
     <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-neutral-200 sticky top-0 z-50">
       {/* Banner Image with Login Overlay */}
       <div className="relative w-full h-32 bg-contain bg-center bg-no-repeat" 
-           style={{ backgroundImage: 'url(/pics/large.jpg)' }}>
+           style={{ backgroundImage: 'url(public/pics/large.jpg)' }}>
         <div className="w-full h-full bg-black bg-opacity-10"></div> </div>
         
         {/* Login Overlay */}
