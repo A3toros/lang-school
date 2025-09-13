@@ -3,16 +3,6 @@
 export const mockTeachers = [
   {
     id: 1,
-    name: 'Sarah Johnson',
-    email: 'sarah.johnson@langschool.com',
-    photo_url: '/pics/teachers/sarah.jpg',
-    description: 'Experienced English teacher with 10+ years of experience.',
-    is_active: true,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: 2,
     name: 'Michael Chen',
     email: 'michael.chen@langschool.com',
     photo_url: '/pics/teachers/michael.jpg',
@@ -162,11 +152,11 @@ export const mockApiResponses = {
 
 // Test utilities
 export const createMockUser = (role = 'admin', teacherId = null) => ({
-  id: role === 'admin' ? 1 : 2,
-  username: role === 'admin' ? 'admin' : 'sarah.johnson',
+  id: role === 'admin' ? 1 : 1,
+  username: role === 'admin' ? 'admin' : 'michael.chen',
   role,
-  teacherId,
-  teacher_name: role === 'teacher' ? 'Sarah Johnson' : null
+  teacherId: role === 'teacher' ? 1 : teacherId,
+  teacher_name: role === 'teacher' ? 'Michael Chen' : null
 })
 
 export const createMockAuthContext = (user = createMockUser()) => ({

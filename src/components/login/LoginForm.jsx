@@ -95,13 +95,6 @@ const LoginForm = ({ onLogin, error = '' }) => {
       </form>
 
       <div className="mt-6 text-center">
-        <p className="text-sm text-neutral-500">
-          Demo credentials:
-        </p>
-        <div className="mt-2 space-y-1 text-xs text-neutral-600">
-          <p><strong>Admin:</strong> admin / admin123</p>
-          <p><strong>Teacher:</strong> sarah.johnson / teacher123</p>
-        </div>
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-xs text-yellow-700">
             <strong>Note:</strong> Authentication is disabled in development mode. 

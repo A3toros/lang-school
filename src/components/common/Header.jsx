@@ -208,16 +208,6 @@ const Header = ({ onLogin, loginError }) => {
                   </motion.button>
                 </form>
 
-                <div className="mt-3 pt-3 border-t border-neutral-200">
-                  <p className="text-xs text-neutral-500 mb-2">Demo credentials:</p>
-                  <div className="text-xs text-neutral-600 space-y-1">
-                    <p><strong>Admin:</strong> admin / admin123</p>
-                    <p><strong>Teacher:</strong> sarah.johnson / teacher123</p>
-                  </div>
-                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-                    <strong>Note:</strong> Authentication uses real API with connected database.
-                  </div>
-                </div>
               </motion.div>
             )}
         </div>

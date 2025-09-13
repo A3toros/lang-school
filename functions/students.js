@@ -1054,34 +1054,6 @@ async function bulkUpdateStudents(event, user) {
 // TEACHER MANAGEMENT FUNCTIONS
 // =====================================================
 
-// Get student's assigned teachers
-async function getStudentTeachers(event, user) {
-  try {
-    const studentId = parseInt(event.path.split('/')[3])
-    
-    // Check permissions
-    if (user.role === 'teacher') {
-      const hasAccess = await hasStudentAccess(user.teacherId, studentId)
-      if (!hasAccess) {
-        return errorResponse(403, 'Forbidden')
-      }
-    }
-
-    const queryText = `
-      SELECT t.*, st.is_primary, st.assigned_date, st.assigned_by
-      FROM teachers t
-      JOIN student_teachers st ON t.id = st.teacher_id
-      WHERE st.student_id = $1 AND st.is_active = true
-      ORDER BY st.is_primary DESC, t.name
-    `
-    
-    const result = await query(queryText, [studentId])
-    return successResponse({ teachers: result.rows })
-  } catch (error) {
-    console.error('Get student teachers error:', error)
-    return errorResponse(500, 'Failed to fetch teachers')
-  }
-}
 
 // Add teacher to student
 async function addStudentTeacher(event, user) {
@@ -1307,3 +1279,4 @@ async function hasStudentAccess(teacherId, studentId) {
     return false
   }
 }
+
