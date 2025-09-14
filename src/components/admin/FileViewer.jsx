@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { getFileIcon, formatFileSize } from '../../utils/fileTypes'
+import { getFileIconComponent } from '../../utils/FileIconComponent'
+import EnhancedFileViewer from '../common/EnhancedFileViewer'
+import CachedImage from '../common/CachedImage'
 
 const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
   console.log('🔍 [FILE_VIEWER] FileViewer called with:', { file, isOpen, onClose, showAsInline })
@@ -7,9 +10,21 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
   const [googleDocsFailed, setGoogleDocsFailed] = useState(false)
   const [isOfficeDoc, setIsOfficeDoc] = useState(false)
   const [showFallback, setShowFallback] = useState(false)
+
+  // Check if file type is supported by enhanced viewer
+  const isSupportedByEnhancedViewer = (file) => {
+    if (!file) return false
+    
+    const fileName = file.original_name || file.display_name || ''
+    const extension = fileName.split('.').pop()?.toLowerCase() || ''
+    
+    return ['pdf', 'xlsx', 'xls', 'docx', 'doc'].includes(extension)
+  }
   
   // Reset Google Docs failed state when file changes
   useEffect(() => {
+    if (!file) return
+    
     setGoogleDocsFailed(false)
     setShowFallback(false)
     
@@ -41,6 +56,12 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
     return null
   }
 
+  // Use enhanced viewer for supported file types
+  if (isSupportedByEnhancedViewer(file)) {
+    console.log('🔍 [FILE_VIEWER] Using enhanced viewer for file:', file.display_name)
+    return <EnhancedFileViewer file={file} isOpen={isOpen} onClose={onClose} showAsInline={showAsInline} />
+  }
+
   // Use the file URL directly - it should be public
   const url = file.cloudinary_url
 
@@ -55,9 +76,10 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
   }
 
   const handleDownload = () => {
-    // Use the public URL for direct download
+    // Use the public download endpoint
+    const downloadUrl = `/api/files/${file.id}/download/public`
     const link = document.createElement('a')
-    link.href = url
+    link.href = downloadUrl
     link.download = file.display_name || file.original_name
     document.body.appendChild(link)
     link.click()
@@ -72,7 +94,7 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
       return (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
-            <div className="text-6xl mb-4">{getFileIcon(file.file_type)}</div>
+            <div className="mb-4">{getFileIconComponent(file.file_type)}</div>
             <p className="text-gray-600 mb-4">File not available for preview</p>
             <button
               onClick={handleDownload}
@@ -85,14 +107,25 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
       )
     }
 
-    // Images - use <img> tag
+    // Images - use CachedImage for efficient caching
     if (file.file_type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(file.file_type)) {
       return (
         <div className="h-full flex items-center justify-center bg-gray-50">
-          <img
+          <CachedImage
             src={url}
+            fileId={file.id}
             alt={file.display_name}
-            style={{ maxWidth: "100%", maxHeight: "600px" }}
+            className="max-w-full max-h-[600px] object-contain"
+            fallback={
+              <div className="flex flex-col items-center space-y-2 text-center">
+                <div className="w-16 h-16 text-gray-400">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-sm text-gray-500">Image unavailable</span>
+              </div>
+            }
           />
         </div>
       )
@@ -126,7 +159,7 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
         return (
           <div className="flex items-center justify-center h-full bg-gray-50">
             <div className="text-center max-w-md">
-              <div className="text-6xl mb-4">{getFileIcon(file.file_type)}</div>
+              <div className="mb-4">{getFileIconComponent(file.file_type)}</div>
               <h3 className="text-xl font-semibold text-gray-800 mb-2">{file.display_name}</h3>
               <p className="text-gray-600 mb-6">
                 {googleDocsFailed ? 'Preview failed due to authentication issues.' : 'Preview is taking too long to load.'} 
@@ -197,7 +230,7 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
         <div className="h-full flex items-center justify-center bg-gray-50">
           <div className="w-full max-w-md">
             <div className="text-center mb-6">
-              <div className="text-6xl mb-4">{getFileIcon(file.file_type)}</div>
+              <div className="mb-4">{getFileIconComponent(file.file_type)}</div>
               <h3 className="text-xl font-semibold text-gray-800">{file.display_name}</h3>
             </div>
             <audio controls className="w-full">
@@ -246,7 +279,7 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <span className="text-2xl">{getFileIcon(file.file_type)}</span>
+            <span>{getFileIconComponent(file.file_type)}</span>
             <div>
               <h3 className="text-lg font-semibold text-gray-800">{file.display_name}</h3>
               <p className="text-sm text-gray-500">
@@ -314,7 +347,7 @@ const FileViewer = ({ file, isOpen, onClose, showAsInline = false }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <span className="text-2xl">{getFileIcon(file.file_type)}</span>
+            <span>{getFileIconComponent(file.file_type)}</span>
             <div>
               <h3 className="text-lg font-semibold text-gray-800">{file.display_name}</h3>
               <p className="text-sm text-gray-500">

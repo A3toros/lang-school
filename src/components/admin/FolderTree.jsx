@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
 import cloudinaryService from '../../services/cloudinaryService'
 import { getFileType, getFileIcon, getAcceptedTypes, formatFileSize } from '../../utils/fileTypes'
+import { getFileIconComponent } from '../../utils/FileIconComponent'
 
 const FolderTree = ({ 
   folders, 
@@ -310,8 +311,8 @@ const FolderTree = ({
     try {
       console.log('📁 [FOLDER_TREE] Starting download')
       
-      // Use the backend download endpoint which will redirect to Cloudinary
-      const downloadUrl = `/api/files/${selectedFile.id}/download`
+      // Use the public download endpoint which doesn't require authentication
+      const downloadUrl = `/api/files/${selectedFile.id}/download/public`
       
       console.log('📁 [FOLDER_TREE] Starting download with backend URL:', downloadUrl)
       
@@ -694,12 +695,8 @@ const FolderTree = ({
                       key={file.id}
                       className="flex items-center py-1 px-2 hover:bg-gray-100 rounded cursor-pointer text-sm text-gray-700 group"
                     >
-                      <span className="text-lg mr-2">
-                        {file.file_type === 'pdf' ? '📄' : 
-                         file.file_type === 'zip' ? '📦' : 
-                         file.file_type === 'doc' || file.file_type === 'docx' ? '📝' : 
-                         file.file_type === 'xls' || file.file_type === 'xlsx' ? '📊' : 
-                         file.file_type === 'ppt' || file.file_type === 'pptx' ? '📽️' : '📄'}
+                      <span className="mr-2">
+                        {getFileIconComponent(file.file_type)}
                       </span>
                       <span className="flex-1 truncate" title={file.display_name}>
                         {file.display_name}
@@ -770,12 +767,8 @@ const FolderTree = ({
                             key={file.id}
                             className="flex items-center py-1 px-2 hover:bg-gray-100 rounded cursor-pointer text-sm text-gray-700 group"
                           >
-                            <span className="text-lg mr-2">
-                              {file.file_type === 'pdf' ? '📄' : 
-                               file.file_type === 'zip' ? '📦' : 
-                               file.file_type === 'doc' || file.file_type === 'docx' ? '📝' : 
-                               file.file_type === 'xls' || file.file_type === 'xlsx' ? '📊' : 
-                               file.file_type === 'ppt' || file.file_type === 'pptx' ? '📽️' : '📄'}
+                            <span className="mr-2">
+                              {getFileIconComponent(file.file_type)}
                             </span>
                             <span className="flex-1 truncate" title={file.display_name}>
                               {file.display_name}

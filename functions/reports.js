@@ -524,18 +524,13 @@ async function getStudentReports(event, user) {
       })
 
       const studentCheck = await query(
-        'SELECT teacher_id FROM students WHERE id = $1',
-        [studentId]
+        'SELECT 1 FROM student_teachers WHERE student_id = $1 AND teacher_id = $2 AND is_active = true',
+        [studentId, user.teacherId]
       )
       
       if (studentCheck.rows.length === 0) {
-        console.log('❌ [REPORTS] Student not found', { studentId })
-        return errorResponse(404, 'Student not found')
-      }
-      
-      if (studentCheck.rows[0].teacher_id !== user.teacherId) {
         console.log('❌ [REPORTS] Access forbidden - not teachers student', {
-          studentTeacherId: studentCheck.rows[0].teacher_id,
+          studentId,
           userTeacherId: user.teacherId
         })
         return errorResponse(403, 'Forbidden')
@@ -798,20 +793,13 @@ async function bulkCreateReports(event, user) {
         // Check permissions for each report
         if (user.role === 'teacher') {
           const studentCheck = await client.query(
-            'SELECT teacher_id FROM students WHERE id = $1',
-            [student_id]
+            'SELECT 1 FROM student_teachers WHERE student_id = $1 AND teacher_id = $2 AND is_active = true',
+            [student_id, user.teacherId]
           )
           
           if (studentCheck.rows.length === 0) {
-            console.log('⚠️ [REPORTS] Skipping report - student not found', { student_id })
-            skippedCount++
-            continue
-          }
-          
-          if (studentCheck.rows[0].teacher_id !== user.teacherId) {
             console.log('⚠️ [REPORTS] Skipping report - not teacher\'s student', {
               student_id,
-              studentTeacherId: studentCheck.rows[0].teacher_id,
               userTeacherId: user.teacherId
             })
             skippedCount++

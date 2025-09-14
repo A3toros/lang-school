@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, corsHeaders, getPool } = require('./utils/database.js')
 
-exports.handler = async (event, context) => {
+const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -22,6 +22,9 @@ exports.handler = async (event, context) => {
 
     if (path === '/api/files/public' && method === 'GET') {
       // Public file access for teachers
+      isPublicEndpoint = true
+    } else if (path.match(/^\/api\/files\/\d+\/download\/public$/) && method === 'GET') {
+      // Public file download - no authentication required
       isPublicEndpoint = true
     } else {
       // All other routes require authentication
@@ -51,6 +54,8 @@ exports.handler = async (event, context) => {
       return await getFiles(event, user)
     } else if (path.match(/^\/api\/files\/\d+\/download$/) && method === 'GET') {
       return await downloadFile(event, user)
+    } else if (path.match(/^\/api\/files\/\d+\/download\/public$/) && method === 'GET') {
+      return await downloadFilePublic(event, user)
     } else if (path === '/api/files/public' && method === 'GET') {
       return await getPublicFiles(event, user)
     } else {
@@ -719,3 +724,76 @@ async function downloadFile(event, user) {
     return errorResponse(500, 'Failed to download file')
   }
 }
+
+// Download file (public - no authentication required)
+async function downloadFilePublic(event, user) {
+  console.log('🔍 [FILES] downloadFilePublic called', {
+    fileId: event.path.split('/')[3]
+  })
+
+  try {
+    const fileId = parseInt(event.path.split('/')[3])
+
+    // Get file info
+    const fileInfo = await query(
+      'SELECT * FROM shared_files WHERE id = $1 AND is_active = true',
+      [fileId]
+    )
+
+    if (fileInfo.rows.length === 0) {
+      return errorResponse(404, 'File not found')
+    }
+
+    const file = fileInfo.rows[0]
+
+    console.log('✅ [FILES] Public file download initiated', {
+      fileId: file.id,
+      displayName: file.display_name
+    })
+
+    // Make the URL publicly accessible by adding transformation parameters
+    let publicUrl = file.cloudinary_url
+    
+    // For image uploads, add transformation parameters to make it publicly accessible
+    if (file.cloudinary_url.includes('/image/upload/')) {
+      publicUrl = file.cloudinary_url.replace('/image/upload/', '/image/upload/f_auto,q_auto/')
+    }
+    // For raw uploads, add transformation parameters to make it publicly accessible
+    else if (file.cloudinary_url.includes('/raw/upload/')) {
+      publicUrl = file.cloudinary_url.replace('/raw/upload/', '/raw/upload/f_auto,q_auto/')
+    }
+
+    // Fetch the file from Cloudinary and serve it directly
+    try {
+      const response = await fetch(publicUrl)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`)
+      }
+
+      const fileBuffer = await response.arrayBuffer()
+      const base64Content = Buffer.from(fileBuffer).toString('base64')
+
+      return {
+        statusCode: 200,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': file.file_type || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${file.display_name}"`,
+          'Content-Length': fileBuffer.byteLength.toString()
+        },
+        body: base64Content,
+        isBase64Encoded: true
+      }
+    } catch (fetchError) {
+      console.error('❌ [FILES] Failed to fetch file from Cloudinary:', fetchError)
+      return errorResponse(500, 'Failed to fetch file from storage')
+    }
+  } catch (error) {
+    console.error('❌ [FILES] Public download file error:', error)
+    return errorResponse(500, 'Failed to download file')
+  }
+}
+
+// Export the handler for Netlify Functions
+module.exports = { handler }

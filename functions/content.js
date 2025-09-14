@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool  } = require('./utils/database.js')
 
-exports.handler = async (event, context) => {
+const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -803,3 +803,6 @@ async function exportContent(event, user) {
     return errorResponse(500, 'Failed to export content data')
   }
 }
+
+// Export the handler for Netlify Functions
+module.exports = { handler }

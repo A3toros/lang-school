@@ -2,6 +2,34 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
 
+let telemetryTableInitialized = false
+
+async function ensureTelemetryTable(query) {
+  if (telemetryTableInitialized) return
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS cache_telemetry (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INT NULL,
+        user_role TEXT NULL,
+        event TEXT NOT NULL,
+        resource TEXT NULL,
+        resource_id TEXT NULL,
+        endpoint TEXT NULL,
+        etag TEXT NULL,
+        version TEXT NULL,
+        status TEXT NULL,
+        latency_ms INT NULL,
+        ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `)
+  } catch (e) {
+    // ignore init errors to avoid impacting primary flows
+  } finally {
+    telemetryTableInitialized = true
+  }
+}
+
 exports.handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -23,6 +51,9 @@ exports.handler = async (event, context) => {
     } catch (error) {
       return errorResponse(401, 'Unauthorized')
     }
+
+    // One-time ensure telemetry table exists
+    await ensureTelemetryTable(query)
 
     // Route to appropriate handler
     if (path === '/api/analytics/overview' && method === 'GET') {
@@ -47,12 +78,61 @@ exports.handler = async (event, context) => {
       return await getAnalyticsReports(event, user)
     } else if (path.startsWith('/api/analytics/students/') && path.endsWith('/attendance') && method === 'GET') {
       return await getStudentAttendanceAnalytics(event, user)
+    } else if (path === '/api/analytics/cache' && method === 'POST') {
+      return await postCacheTelemetry(event, user)
+    } else if (path === '/api/analytics/cache' && method === 'GET') {
+      return await getCacheTelemetry(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
   } catch (error) {
     console.error('Analytics API error:', error)
     return errorResponse(500, 'Internal server error')
+  }
+}
+// Lightweight cache telemetry endpoint (anonymized, sampled on client)
+async function postCacheTelemetry(event, user) {
+  try {
+    const body = JSON.parse(event.body || '{}')
+    const payload = {
+      event: String(body.event || 'unknown'),
+      resource: body.resource ? String(body.resource) : null,
+      resource_id: body.resourceId ? String(body.resourceId) : null,
+      endpoint: body.endpoint ? String(body.endpoint) : null,
+      etag: body.etag ? String(body.etag) : null,
+      version: body.version ? String(body.version) : null,
+      status: body.status ? String(body.status) : null,
+      latency_ms: typeof body.latencyMs === 'number' ? Math.min(Math.max(body.latencyMs, 0), 600000) : null,
+      user_id: user.userId,
+      user_role: user.role
+    }
+    await query(
+      `INSERT INTO cache_telemetry (user_id, user_role, event, resource, resource_id, endpoint, etag, version, status, latency_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [payload.user_id, payload.user_role, payload.event, payload.resource, payload.resource_id, payload.endpoint, payload.etag, payload.version, payload.status, payload.latency_ms]
+    )
+    return successResponse({ ok: true })
+  } catch (error) {
+    return errorResponse(400, 'Invalid telemetry payload')
+  }
+}
+
+async function getCacheTelemetry(event, user) {
+  try {
+    if (user.role !== 'admin') return errorResponse(403, 'Forbidden')
+    const { limit = '100', resource, user_id } = event.queryStringParameters || {}
+    let sql = 'SELECT id, ts, user_id, user_role, event, resource, resource_id, endpoint, etag, version, status, latency_ms FROM cache_telemetry'
+    const params = []
+    let where = []
+    if (resource) { params.push(resource); where.push(`resource = $${params.length}`) }
+    if (user_id) { params.push(parseInt(user_id)); where.push(`user_id = $${params.length}`) }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ')
+    sql += ` ORDER BY id DESC LIMIT $${params.length + 1}`
+    params.push(parseInt(limit))
+    const res = await query(sql, params)
+    return successResponse({ events: res.rows })
+  } catch (e) {
+    return errorResponse(500, 'Failed to load cache telemetry')
   }
 }
 
@@ -113,11 +193,11 @@ async function getTeacherAnalytics(event, user) {
         t.name,
         t.email,
         COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
-        COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate,
         COUNT(DISTINCT s.id) as unique_students,
         COUNT(lr.id) as total_reports
@@ -162,7 +242,8 @@ async function getStudentAnalytics(event, user) {
         ) as attendance_rate,
         COUNT(lr.id) as total_reports
       FROM students s
-      LEFT JOIN teachers t ON s.teacher_id = t.id
+      LEFT JOIN student_teachers st ON s.id = st.student_id AND st.is_active = true
+      LEFT JOIN teachers t ON st.teacher_id = t.id
       LEFT JOIN student_schedules ss ON s.id = ss.student_id 
         AND ss.attendance_date >= CURRENT_DATE - INTERVAL '${days} days'
       LEFT JOIN lesson_reports lr ON s.id = lr.student_id 

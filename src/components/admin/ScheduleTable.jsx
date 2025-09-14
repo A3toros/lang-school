@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
-import { getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo } from '../../utils/dateUtils'
+import { getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo, getCurrentWeekStart } from '../../utils/dateUtils'
 import draftManager from '../../utils/draftManager'
 import SaveWarningModal from '../common/SaveWarningModal'
+import StudentSelectionModal from './StudentSelectionModal'
+import SuccessNotification from '../common/SuccessNotification'
 
 const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
+  console.log('🔍 [ScheduleTable] Received weekStart prop:', weekStart)
+  console.log('🔍 [ScheduleTable] Expected current week:', getCurrentWeekStart())
+  
   const [schedule, setSchedule] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -17,11 +22,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   }, [editMode])
   const [showAddStudentModal, setShowAddStudentModal] = useState(false)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null)
-  const [availableStudents, setAvailableStudents] = useState([])
   const [selectedStudentId, setSelectedStudentId] = useState('')
   const [isTransitioning, setIsTransitioning] = useState(false)
   
   // Enhanced input functionality
+  const [availableStudents, setAvailableStudents] = useState([])
   const [editingCell, setEditingCell] = useState(null)
   const [studentInput, setStudentInput] = useState('')
   const [filteredStudents, setFilteredStudents] = useState([])
@@ -40,12 +45,23 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showSaveWarning, setShowSaveWarning] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
+  
+  // Notification state
+  const [showNotification, setShowNotification] = useState(false)
+  const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Helper function to show notifications
+  const showNotificationMessage = (title, message, type = 'success') => {
+    setNotificationData({ title, message, type })
+    setShowNotification(true)
+  }
   const [originalSchedule, setOriginalSchedule] = useState([])
 
   useEffect(() => {
     if (teacherId) {
       fetchSchedule()
+      fetchAvailableStudents()
     } else {
       setLoading(false)
     }
@@ -62,15 +78,19 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   const fetchSchedule = async () => {
     try {
+      console.log('🔍 [FETCH_SCHEDULE] Starting fetch for teacherId:', teacherId, 'weekStart:', weekStart)
       setLoading(true)
       const response = await apiService.getTeacherSchedule(teacherId, weekStart)
+      console.log('🔍 [FETCH_SCHEDULE] API response:', response)
       const originalData = response.schedules || []
+      console.log('🔍 [FETCH_SCHEDULE] Original data:', originalData)
       
       // Store original schedule
       setOriginalSchedule(originalData)
       
       // Apply draft changes if any
       const scheduleWithDraft = draftManager.applyDraftToSchedule(originalData, teacherId, weekStart)
+      console.log('🔍 [FETCH_SCHEDULE] Schedule with draft:', scheduleWithDraft)
       setSchedule(scheduleWithDraft)
       
       // Check if there are unsaved changes
@@ -79,7 +99,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       
     } catch (err) {
       setError('Failed to load schedule')
-      console.error('Error fetching schedule:', err)
+      console.error('❌ [FETCH_SCHEDULE] Error fetching schedule:', err)
     } finally {
       setLoading(false)
     }
@@ -184,13 +204,6 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     filterStudents(value)
   }
 
-  const handleStudentSelect = (student) => {
-    setSelectedStudent(student)
-    setStudentInput(student.name)
-    setShowSuggestions(false)
-    setShowAutofillTip(false)
-    setAutofillStudent(null)
-  }
 
   const handleCellDoubleClick = (dayIndex, timeSlot) => {
     console.log('🔍 [DOUBLE_CLICK] editMode:', editMode, 'dayIndex:', dayIndex, 'timeSlot:', timeSlot)
@@ -227,7 +240,6 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       
       // Fetch available students for this teacher
       if (teacherId) {
-        fetchAvailableStudents()
       }
       
       // Focus input after state update
@@ -251,7 +263,6 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     setSelectedTimeSlot(timeSlot)
     setShowAddStudentModal(true)
     if (teacherId) {
-      fetchAvailableStudents()
     }
   }
 
@@ -270,6 +281,18 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     return dayMap[dayName] !== undefined ? dayMap[dayName] : 0
   }
 
+  const handleStudentSelect = (student) => {
+    console.log('🔍 [HANDLE_STUDENT_SELECT] Selected student:', student)
+    
+    if (!selectedTimeSlot) {
+      console.log('❌ [HANDLE_STUDENT_SELECT] No time slot selected')
+      return
+    }
+    
+    // Use the existing function with the selected student and time slot
+    handleAddStudentToSchedule(student, null, selectedTimeSlot)
+  }
+
   const handleAddStudentToSchedule = async (student = null, dayIndex = null, timeSlot = null) => {
     console.log('🔍 [HANDLE_ADD_STUDENT] Called with:', {
       student: student?.name,
@@ -279,7 +302,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       selectedTimeSlot
     })
     
-    const studentToUse = student || availableStudents.find(s => s.id === selectedStudentId)
+    const studentToUse = student
     const timeSlotToUse = timeSlot || selectedTimeSlot
     
     console.log('🔍 [HANDLE_ADD_STUDENT] Using:', {
@@ -554,7 +577,6 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         )
       }
       
-      alert('Lesson marked for deletion')
       setShowFutureLessonConfirm(false)
       setFutureLessonData(null)
     }
@@ -572,10 +594,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       
       if (response.success) {
         // Reset the lesson status to 'scheduled' (remove attendance status)
-        await apiService.markAttendance({
-          schedule_id: lessonReportData.schedule.id,
-          status: 'scheduled'
-        })
+        await apiService.markAttendance(
+          lessonReportData.schedule.id,
+          'scheduled',
+          new Date().toISOString().split('T')[0]
+        )
         
         // Refresh the schedule to show updated status
         await fetchSchedule()
@@ -629,48 +652,6 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
             }}
           />
           
-          {/* In-cell suggestions */}
-          {showSuggestions && filteredStudents.length > 0 && (
-            <div className="absolute z-20 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-              {filteredStudents.slice(0, 5).map((student) => (
-                <div
-                  key={student.id}
-                  onClick={() => {
-                    // Prevent selection of students assigned to other teachers
-                    if (student.teacher_id && student.teacher_id !== teacherId) {
-                      return
-                    }
-                    setSelectedStudent(student)
-                    setStudentInput(student.name)
-                    setShowSuggestions(false)
-                  }}
-                  className={`px-3 py-2 text-sm border-b border-gray-100 last:border-b-0 ${
-                    student.teacher_id && student.teacher_id !== teacherId
-                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed'
-                      : 'hover:bg-gray-100 cursor-pointer'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="font-medium">{student.name}</span>
-                      <span className="text-xs text-gray-500">
-                        {student.lessons_per_week} lessons (auto)
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      {!student.teacher_id ? (
-                        <span className="text-xs text-green-600 font-medium">Unassigned</span>
-                      ) : student.teacher_id === teacherId ? (
-                        <span className="text-xs text-blue-600 font-medium">Current Teacher</span>
-                      ) : (
-                        <span className="text-xs text-red-600 font-medium">Other Teacher</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
           
           {/* Autofill Tip - Minimalistic with Click Handler */}
           {showAutofillTip && autofillStudent && (
@@ -804,6 +785,19 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   // Draft mode functions
   const saveChangesToDatabase = async () => {
     console.log('🔍 [SAVE] Save button clicked, hasUnsavedChanges:', hasUnsavedChanges)
+    console.log('🔍 [SAVE] Current date:', new Date().toISOString().split('T')[0])
+    console.log('🔍 [SAVE] Current date local:', new Date().toLocaleDateString('en-CA'))
+    console.log('🔍 [SAVE] Current day of week:', new Date().getDay())
+    console.log('🔍 [SAVE] Expected current week start:', getCurrentWeekStart())
+    
+    // Manual calculation for debugging
+    const today = new Date()
+    const day = today.getDay()
+    const daysToMonday = day === 0 ? 6 : day - 1
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - daysToMonday)
+    console.log('🔍 [SAVE] Manual calculation - daysToMonday:', daysToMonday)
+    console.log('🔍 [SAVE] Manual calculation - monday:', monday.toISOString().split('T')[0])
     
     if (!hasUnsavedChanges) {
       console.log('❌ [SAVE] No unsaved changes, returning early')
@@ -828,14 +822,30 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       }
 
       // Process additions
+      console.log('🔍 [SAVE] Current weekStart prop:', weekStart)
+      console.log('🔍 [SAVE] Processing additions:', draft.additions.length)
       for (const addition of draft.additions) {
-        await apiService.createSchedule({
+        console.log('🔍 [SAVE] Addition weekStart:', addition.weekStart)
+        console.log('🔍 [SAVE] Calling createSchedule with:', {
           student_id: addition.studentId,
           teacher_id: addition.teacherId,
           day_of_week: addition.dayOfWeek,
           time_slot: addition.timeSlot,
           week_start_date: addition.weekStart
         })
+        try {
+          const result = await apiService.createSchedule({
+            student_id: addition.studentId,
+            teacher_id: addition.teacherId,
+            day_of_week: addition.dayOfWeek,
+            time_slot: addition.timeSlot,
+            week_start_date: addition.weekStart
+          })
+          console.log('🔍 [SAVE] createSchedule result:', result)
+        } catch (error) {
+          console.error('❌ [SAVE] createSchedule error:', error)
+          throw error
+        }
       }
 
       // Process deletions
@@ -853,7 +863,16 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       console.log('✅ [DRAFT] Changes saved successfully')
     } catch (error) {
       console.error('❌ [DRAFT] Failed to save changes:', error)
-      alert('Failed to save changes. Please try again.')
+      
+      // Extract the error message from the error object
+      let errorMessage = 'Failed to save changes. Please try again.'
+      if (error.message) {
+        errorMessage = error.message
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      }
+      
+      showNotificationMessage('Error', errorMessage, 'error')
     } finally {
       setIsSaving(false)
     }
@@ -893,8 +912,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     } else if (action === 'currentWeek') {
       if (onWeekChange && !isTransitioning) {
         setIsTransitioning(true)
-        const today = new Date()
-        const currentWeekStart = today.toISOString().split('T')[0]
+        const currentWeekStart = getCurrentWeekStart()
         onWeekChange(currentWeekStart)
         setTimeout(() => setIsTransitioning(false), 300)
       }
@@ -1240,62 +1258,18 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         </div>
       </div>
 
-      {/* Add Student Modal */}
-      {showAddStudentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-lg p-6 w-96 max-w-full mx-4"
-          >
-            <h3 className="text-lg font-semibold text-neutral-800 mb-4">
-              Add Student to Schedule
-            </h3>
-            <p className="text-sm text-neutral-600 mb-4">
-              {selectedTimeSlot && `Adding student for ${selectedTimeSlot.day} at ${selectedTimeSlot.time}`}
-            </p>
-            
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Select Student
-              </label>
-              <select
-                value={selectedStudentId}
-                onChange={(e) => setSelectedStudentId(e.target.value)}
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="">Choose a student...</option>
-                {availableStudents.map((student) => (
-                  <option key={student.id} value={student.id}>
-                    {student.name} {!student.teacher_id ? '(Unassigned)' : student.teacher_id === teacherId ? '(Current Teacher)' : '(Other Teacher)'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => {
-                  setShowAddStudentModal(false)
-                  setSelectedStudentId('')
-                  setSelectedTimeSlot(null)
-                }}
-                className="flex-1 px-4 py-2 border border-neutral-300 text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddStudentToSchedule}
-                disabled={!selectedStudentId}
-                className="flex-1 px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
-              >
-                Add Student
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      {/* Enhanced Student Selection Modal */}
+      <StudentSelectionModal
+        isOpen={showAddStudentModal}
+        onClose={() => {
+          setShowAddStudentModal(false)
+          setSelectedStudentId('')
+          setSelectedTimeSlot(null)
+        }}
+        onSelect={handleStudentSelect}
+        teacherId={teacherId}
+        teacherName="Teacher"
+      />
 
       {/* Lesson Report Modal */}
       {showLessonReport && lessonReportData && (
@@ -1456,6 +1430,15 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         onDiscard={() => handleSaveWarningResponse('discard')}
         pendingAction={pendingAction}
         changesSummary={draftManager.getChangesSummary()}
+      />
+      
+      {/* Success/Error Notification */}
+      <SuccessNotification
+        isVisible={showNotification}
+        onClose={() => setShowNotification(false)}
+        title={notificationData.title}
+        message={notificationData.message}
+        type={notificationData.type}
       />
     </div>
   )

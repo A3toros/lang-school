@@ -16,7 +16,11 @@ const AdminPage = () => {
   const { user, logout } = useAuth()
   const [selectedTeacher, setSelectedTeacher] = useState(null)
   const [selectedStudent, setSelectedStudent] = useState(null)
-  const [currentWeek, setCurrentWeek] = useState(getCurrentWeekStart())
+  const [currentWeek, setCurrentWeek] = useState(() => {
+    const weekStart = getCurrentWeekStart()
+    console.log('🔍 [AdminPage] Initial currentWeek:', weekStart)
+    return weekStart
+  })
   const [activeTab, setActiveTab] = useState('schedule')
   
   // Unsaved changes handling
@@ -33,7 +37,10 @@ const AdminPage = () => {
   }
 
   const handleWeekChange = (weekStart) => {
+    console.log('🔍 [AdminPage] handleWeekChange called with:', weekStart)
+    console.log('🔍 [AdminPage] Previous currentWeek:', currentWeek)
     setCurrentWeek(weekStart)
+    console.log('🔍 [AdminPage] New currentWeek set to:', weekStart)
   }
 
   // Unsaved changes handling functions
@@ -47,13 +54,24 @@ const AdminPage = () => {
   }
 
   const saveChangesToDatabase = async () => {
+    console.log('🔍 [ADMIN_SAVE] Save button clicked, processing draft...')
     try {
       setIsSaving(true)
       const draft = draftManager.getDraftChanges()
+      console.log('🔍 [ADMIN_SAVE] Draft data:', draft)
       if (!draft) return
 
       // Process additions
+      console.log('🔍 [ADMIN_SAVE] Processing additions:', draft.additions.length)
       for (const addition of draft.additions) {
+        console.log('🔍 [ADMIN_SAVE] Addition weekStart:', addition.weekStart)
+        console.log('🔍 [ADMIN_SAVE] Calling createSchedule with:', {
+          student_id: addition.studentId,
+          teacher_id: addition.teacherId,
+          day_of_week: addition.dayOfWeek,
+          time_slot: addition.timeSlot,
+          week_start_date: addition.weekStart
+        })
         await apiService.createSchedule({
           student_id: addition.studentId,
           teacher_id: addition.teacherId,
@@ -61,6 +79,7 @@ const AdminPage = () => {
           time_slot: addition.timeSlot,
           week_start_date: addition.weekStart
         })
+        console.log('✅ [ADMIN_SAVE] createSchedule completed for addition')
       }
 
       // Process deletions

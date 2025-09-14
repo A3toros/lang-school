@@ -23,7 +23,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     total: 0
   })
   const [showAddModal, setShowAddModal] = useState(false)
-  const [newStudent, setNewStudent] = useState({ name: '', teacher_id: '' })
+  const [newStudent, setNewStudent] = useState({ name: '' })
   const [teachers, setTeachers] = useState([])
   const [sortConfig, setSortConfig] = useState({
     key: 'added_date',
@@ -234,20 +234,19 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
 
   const handleAddStudent = async () => {
     try {
-      if (!newStudent.name || !newStudent.teacher_id) {
-        showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
+      if (!newStudent.name) {
+        showSuccessNotification('Validation Error', 'Please fill in the student name', 'error')
         return
       }
 
       const response = await apiService.createStudent({
         name: newStudent.name,
-        teacher_id: parseInt(newStudent.teacher_id),
         lessons_per_week: 1,
         added_date: new Date().toISOString().split('T')[0]
       })
 
       if (response.success) {
-        setNewStudent({ name: '', teacher_id: '' })
+        setNewStudent({ name: '' })
         setShowAddModal(false)
         fetchStudents()
         showSuccessNotification('Success!', 'Student added successfully', 'success')
@@ -341,8 +340,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       }
 
       const response = await apiService.addStudentTeacher(modalStudent.id, {
-        teacher_id: teacherId,
-        is_primary: assignedTeachers.length === 0 // First teacher is primary
+        teacher_id: teacherId
       })
 
       if (response.success) {
@@ -403,28 +401,6 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     }
   }
 
-  // Set primary teacher
-  const handleSetPrimary = async (teacherId) => {
-    try {
-      setTeacherModalLoading(true)
-      const response = await apiService.setPrimaryTeacher(modalStudent.id, teacherId)
-      
-      if (response.success) {
-        await fetchStudentTeachers(modalStudent.id)
-        // Refresh both active and inactive students to get accurate counts
-        await Promise.all([
-          fetchStudents(),
-          fetchInactiveStudents()
-        ])
-        showSuccessNotification('Success!', 'Primary teacher updated successfully', 'success')
-      }
-    } catch (error) {
-      console.error('Error setting primary teacher:', error)
-      showSuccessNotification('Error', 'Failed to update primary teacher', 'error')
-    } finally {
-      setTeacherModalLoading(false)
-    }
-  }
 
   // Open teacher management modal
   const openTeacherModal = async (student) => {
@@ -777,7 +753,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                             }}
                             className="px-2 sm:px-3 py-1 text-2xs sm:text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors duration-200"
                           >
-                            <span className="hidden sm:inline">Manage Teachers</span>
+                            <span className="hidden sm:inline">See Teachers</span>
                             <span className="sm:hidden">Teachers</span>
                           </button>
                           <div className="flex space-x-1">
@@ -844,18 +820,6 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 onChange={(e) => setNewStudent(prev => ({ ...prev, name: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
-              <select
-                value={newStudent.teacher_id}
-                onChange={(e) => setNewStudent(prev => ({ ...prev, teacher_id: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="">Select Teacher</option>
-                {teachers.map(teacher => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
@@ -1164,10 +1128,6 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
               isOpen={showTeacherModal}
               onClose={closeTeacherModal}
               assignedTeachers={assignedTeachers}
-              availableTeachers={availableTeachers}
-              onAddTeacher={handleAddTeacher}
-              onRemoveTeacher={handleRemoveTeacher}
-              onSetPrimary={handleSetPrimary}
               loading={teacherModalLoading}
             />
     </div>

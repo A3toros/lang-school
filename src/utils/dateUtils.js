@@ -38,13 +38,27 @@ export const formatTime = (timeString) => {
 export const getCurrentWeekStart = () => {
   const today = new Date()
   const day = today.getDay()
-  // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
-  // Calculate days to subtract to get to Monday
+  
+  console.log('🔍 [getCurrentWeekStart] Today:', today.toISOString().split('T')[0])
+  console.log('🔍 [getCurrentWeekStart] Day of week:', day)
+  
+  // JavaScript: Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6
+  // Calculate days to subtract to get to Monday of current week
+  // For Sunday (0): go back 6 days to get to Monday
+  // For Monday (1): go back 0 days (same day)
+  // For Tuesday (2): go back 1 day, etc.
   const daysToMonday = day === 0 ? 6 : day - 1
+  
+  console.log('🔍 [getCurrentWeekStart] Days to Monday:', daysToMonday)
+  
   // Use setDate to avoid timezone issues
   const monday = new Date(today)
   monday.setDate(today.getDate() - daysToMonday)
-  return monday.toISOString().split('T')[0]
+  
+  const result = monday.toISOString().split('T')[0]
+  console.log('🔍 [getCurrentWeekStart] Calculated Monday:', result)
+  
+  return result
 }
 
 export const getWeekStart = (date) => {

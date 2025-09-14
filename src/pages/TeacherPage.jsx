@@ -18,7 +18,7 @@ const TeacherPage = () => {
   const [attendanceStats, setAttendanceStats] = useState({
     completed: 0,
     absent: 0,
-    scheduled: 0,
+    warned: 0,
     attendance_rate: 0
   })
   const [lessonsWithReports, setLessonsWithReports] = useState(new Set())
@@ -81,7 +81,12 @@ const TeacherPage = () => {
         `${currentWeek},${getWeekEnd(currentWeek)}`
       )
       if (response.success) {
-        setAttendanceStats(response.stats)
+        setAttendanceStats({
+          completed: response.stats.completed_lessons || 0,
+          absent: response.stats.absent_lessons || 0,
+          warned: response.stats.warned_lessons || 0,
+          attendance_rate: response.stats.attendance_rate || 0
+        })
       }
     } catch (error) {
       console.error('Error fetching attendance stats:', error)
@@ -194,8 +199,11 @@ const TeacherPage = () => {
   }
 
   const handleAttendanceClick = (scheduleId, status, studentName) => {
+    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Called with:', { scheduleId, status, studentName })
+    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Current modal state before:', showAttendanceConfirmModal)
     setPendingAttendance({ scheduleId, status, studentName })
     setShowAttendanceConfirmModal(true)
+    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Setting modal to true, pending:', { scheduleId, status, studentName })
   }
 
   const confirmMarkAttendance = async () => {
@@ -368,10 +376,14 @@ const TeacherPage = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800'
-      case 'absent': return 'bg-red-100 text-red-800'
-      case 'absent_warned': return 'bg-orange-100 text-orange-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'completed': 
+        return 'bg-green-100 text-green-800'
+      case 'absent': 
+        return 'bg-red-100 text-red-800'
+      case 'absent_warned': 
+        return 'bg-yellow-100 text-yellow-800'
+      default: 
+        return 'bg-gray-100 text-gray-800'
     }
   }
 
@@ -538,12 +550,12 @@ const TeacherPage = () => {
             className="bg-white rounded-lg shadow p-6"
           >
             <div className="flex items-center">
-              <div className="p-2 bg-gray-100 rounded-lg">
-                <div className="w-6 h-6 text-gray-600">⏰</div>
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <div className="w-6 h-6 text-yellow-600">⚠</div>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Scheduled</p>
-                <p className="text-2xl font-semibold text-gray-900">{attendanceStats.scheduled}</p>
+                <p className="text-sm font-medium text-gray-600">Warned</p>
+                <p className="text-2xl font-semibold text-gray-900">{attendanceStats.warned}</p>
               </div>
             </div>
           </motion.div>
@@ -744,15 +756,15 @@ const TeacherPage = () => {
                             const lessonKey = `${scheduleItem.student_id}-${lessonDateStr}-${timeSlot}`
                             const hasReport = lessonsWithReports.has(lessonKey)
                             const isRecentlySubmitted = recentlySubmitted.has(lessonKey)
+                            const isMarked = hasReport || status === 'completed' || status === 'absent' || status === 'absent_warned'
                             
                             return (
                               <motion.div
                                 key={scheduleItem.id}
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ 
-                                  opacity: hasReport ? 0.7 : 1, 
+                                  opacity: isMarked ? 0.7 : 1, 
                                   scale: isRecentlySubmitted ? 1.05 : 1,
-                                  backgroundColor: hasReport ? '#f3f4f6' : undefined,
                                   boxShadow: isRecentlySubmitted ? '0 0 20px rgba(34, 197, 94, 0.4)' : undefined
                                 }}
                                 transition={{ 
@@ -761,12 +773,12 @@ const TeacherPage = () => {
                                   scale: { duration: 0.6, ease: "easeInOut" }
                                 }}
                                 className={`p-2 rounded-lg transition-all duration-300 ${
-                                  hasReport 
-                                    ? 'bg-gray-100 cursor-pointer border-2 border-green-200 hover:bg-gray-200' 
+                                  isMarked 
+                                    ? 'cursor-pointer border-2 border-green-200 hover:bg-gray-200' 
                                     : 'cursor-pointer hover:shadow-lg hover:scale-105'
                                 } ${isRecentlySubmitted ? 'ring-2 ring-green-400 ring-opacity-50' : ''} ${getStatusColor(status)}`}
                                 onClick={() => {
-                                  if (hasReport) {
+                                  if (isMarked) {
                                     // Find the report for this lesson
                                     const report = recentReports.find(r => {
                                       const reportDate = new Date(r.lesson_date)
@@ -795,14 +807,20 @@ const TeacherPage = () => {
                                 }}
                               >
                                 <div className="font-medium text-sm flex items-center justify-between">
-                                  <span className={hasReport ? 'text-gray-500' : ''}>{scheduleItem.student_name}</span>
-                                  {hasReport && (
+                                  <span className={isMarked ? 'text-gray-500' : ''}>{scheduleItem.student_name}</span>
+                                  {isMarked && (
                                     <motion.span 
                                       initial={{ opacity: 0, scale: 0.8 }}
                                       animate={{ 
                                         opacity: 1, 
                                         scale: isRecentlySubmitted ? [1, 1.1, 1] : 1,
-                                        backgroundColor: isRecentlySubmitted ? '#10b981' : '#10b981'
+                                        backgroundColor: isRecentlySubmitted ? 
+                                          (status === 'completed' ? '#10b981' : 
+                                           status === 'absent' ? '#ef4444' : 
+                                           status === 'absent_warned' ? '#eab308' : '#3b82f6') : 
+                                          (status === 'completed' ? '#10b981' : 
+                                           status === 'absent' ? '#ef4444' : 
+                                           status === 'absent_warned' ? '#eab308' : '#3b82f6')
                                       }}
                                       transition={{ 
                                         delay: 0.2, 
@@ -814,19 +832,25 @@ const TeacherPage = () => {
                                         } : { duration: 0.3 }
                                       }}
                                       className={`text-xs text-white px-2 py-1 rounded-full font-semibold shadow-sm ${
-                                        isRecentlySubmitted ? 'animate-pulse' : ''
-                                      }`}
+                                        status === 'completed' ? 'bg-green-500' :
+                                        status === 'absent' ? 'bg-red-500' :
+                                        status === 'absent_warned' ? 'bg-yellow-500' :
+                                        'bg-blue-500'
+                                      } ${isRecentlySubmitted ? 'animate-pulse' : ''}`}
                                     >
-                                      ✓ REPORTED
+                                      {status === 'completed' ? '✓ COMPLETED' : 
+                                       status === 'absent' ? '✗ ABSENT' : 
+                                       status === 'absent_warned' ? '⚠ WARNED' : 
+                                       '✓ REPORTED'}
                                     </motion.span>
                                   )}
                                 </div>
                                 <div className="flex space-x-1 mt-1">
                                   <motion.button
-                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
-                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
+                                    whileHover={!isMarked ? { scale: 1.05 } : {}}
+                                    whileTap={!isMarked ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
-                                      if (hasReport) return
+                                      if (isMarked) return
                                       e.stopPropagation()
                                       // Open report modal for completion
                                       handleStudentClick(
@@ -839,9 +863,9 @@ const TeacherPage = () => {
                                         dayIndex
                                       )
                                     }}
-                                    disabled={hasReport}
+                                    disabled={isMarked}
                                     className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
-                                      hasReport 
+                                      isMarked 
                                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'completed' 
                                           ? 'bg-green-200 text-green-800 hover:bg-green-300' 
@@ -851,16 +875,21 @@ const TeacherPage = () => {
                                     ✓
                                   </motion.button>
                                   <motion.button
-                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
-                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
+                                    whileHover={!isMarked ? { scale: 1.05 } : {}}
+                                    whileTap={!isMarked ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
-                                      if (hasReport) return
+                                      console.log('🔍 [ABSENT_BUTTON_CLICK] Button clicked! isMarked:', isMarked, 'scheduleId:', scheduleItem.id)
+                                      if (isMarked) {
+                                        console.log('🔍 [ABSENT_BUTTON_CLICK] Returning early because isMarked=true')
+                                        return
+                                      }
                                       e.stopPropagation()
+                                      console.log('🔍 [ABSENT_BUTTON_CLICK] Calling handleAttendanceClick')
                                       handleAttendanceClick(scheduleItem.id, 'absent', scheduleItem.student_name)
                                     }}
-                                    disabled={hasReport}
+                                    disabled={isMarked}
                                     className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
-                                      hasReport 
+                                      isMarked 
                                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'absent' 
                                           ? 'bg-red-200 text-red-800 hover:bg-red-300' 
@@ -870,20 +899,20 @@ const TeacherPage = () => {
                                     ✗
                                   </motion.button>
                                   <motion.button
-                                    whileHover={!hasReport ? { scale: 1.05 } : {}}
-                                    whileTap={!hasReport ? { scale: 0.95 } : {}}
+                                    whileHover={!isMarked ? { scale: 1.05 } : {}}
+                                    whileTap={!isMarked ? { scale: 0.95 } : {}}
                                     onClick={(e) => {
-                                      if (hasReport) return
+                                      if (isMarked) return
                                       e.stopPropagation()
                                       handleAttendanceClick(scheduleItem.id, 'absent_warned', scheduleItem.student_name)
                                     }}
-                                    disabled={hasReport}
+                                    disabled={isMarked}
                                     className={`text-xs px-2 py-1 rounded transition-all duration-200 ${
-                                      hasReport 
+                                      isMarked 
                                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
                                         : status === 'absent_warned' 
-                                          ? 'bg-orange-200 text-orange-800 hover:bg-orange-300' 
-                                          : 'bg-gray-200 text-gray-600 hover:bg-orange-200 hover:text-orange-800'
+                                          ? 'bg-yellow-200 text-yellow-800 hover:bg-yellow-300' 
+                                          : 'bg-gray-200 text-gray-600 hover:bg-yellow-200 hover:text-yellow-800'
                                     }`}
                                   >
                                     ⚠
@@ -1015,6 +1044,7 @@ const TeacherPage = () => {
         )}
 
         {/* Attendance Confirmation Modal */}
+        {console.log('🔍 [MODAL_RENDER] showAttendanceConfirmModal:', showAttendanceConfirmModal, 'pendingAttendance:', pendingAttendance)}
         {showAttendanceConfirmModal && pendingAttendance && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <motion.div
@@ -1048,7 +1078,7 @@ const TeacherPage = () => {
                     className={`flex-1 px-4 py-2 text-white rounded-lg ${
                       pendingAttendance.status === 'absent' 
                         ? 'bg-red-600 hover:bg-red-700'
-                        : 'bg-orange-600 hover:bg-orange-700'
+                        : 'bg-yellow-600 hover:bg-yellow-700'
                     }`}
                   >
                     Mark as {pendingAttendance.status.replace('_', ' ').toUpperCase()}

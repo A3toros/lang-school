@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders, getPool } = require('./utils/database.js')
 const { deleteImageByPublicId } = require('./cloudinary.js')
+const crypto = require('crypto')
 
 exports.handler = async (event, context) => {
   // Handle CORS preflight
@@ -142,7 +143,22 @@ async function getTeachers(event, user) {
       teachers: result.rows.map(t => ({ id: t.id, name: t.name, student_count: t.student_count }))
     })
 
-    return successResponse({ teachers: result.rows })
+    // ETag computation based on max(updated_at) and count
+    const count = result.rows.length
+    let maxUpdated = 'epoch'
+    for (const r of result.rows) {
+      const u = r.updated_at || r.updatedAt || r.updated || null
+      if (u && String(u) > String(maxUpdated)) maxUpdated = String(u)
+    }
+    const etag = crypto.createHash('sha1').update(`${maxUpdated}|${count}`).digest('hex')
+    const ifNoneMatch = event.headers['if-none-match'] || event.headers['If-None-Match']
+    const headers = { ...corsHeaders, ETag: etag }
+
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return { statusCode: 304, headers, body: '' }
+    }
+
+    return successResponse({ teachers: result.rows }, 200, headers)
   } catch (error) {
     console.error('❌ [TEACHERS] Get teachers error:', error)
     return errorResponse(500, 'Failed to fetch teachers')
@@ -538,8 +554,9 @@ async function getTeacherStudents(event, user) {
     const queryText = `
       SELECT s.*, COUNT(sl.id) as lesson_count
       FROM students s
+      JOIN student_teachers st ON s.id = st.student_id
       LEFT JOIN student_lessons sl ON s.id = sl.student_id
-      WHERE s.teacher_id = $1 AND s.is_active = true
+      WHERE st.teacher_id = $1 AND st.is_active = true AND s.is_active = true
       GROUP BY s.id
       ORDER BY s.name
     `
@@ -558,12 +575,19 @@ async function getTeacherSchedule(event, user) {
     const teacherId = parseInt(event.path.split('/')[3])
     const { week_start, include_history = 'false' } = event.queryStringParameters || {}
     
+    console.log('🔍 [GET_TEACHER_SCHEDULE] Request params:', { teacherId, week_start, include_history })
+    
     // Check permissions
     if (user.role === 'teacher' && user.teacherId !== teacherId) {
       return errorResponse(403, 'Forbidden')
     }
 
     const weekStart = week_start || getCurrentWeekStart()
+    console.log('🔍 [GET_TEACHER_SCHEDULE] Using weekStart:', weekStart)
+    
+    // Debug: Check what get_current_week_start() returns in the database
+    const debugResult = await query('SELECT get_current_week_start() as db_current_week, CURRENT_DATE as today')
+    console.log('🔍 [GET_TEACHER_SCHEDULE] Database current week:', debugResult.rows[0])
 
     let queryText
     let params = [teacherId]
@@ -600,10 +624,12 @@ async function getTeacherSchedule(event, user) {
               FROM student_schedules ss
               JOIN students s ON ss.student_id = s.id
               JOIN teachers t ON ss.teacher_id = t.id
-              WHERE ss.teacher_id = $1 AND ss.week_start_date = $2 AND ss.week_start_date >= get_current_week_start()
+              WHERE ss.teacher_id = $1 AND ss.week_start_date = $2
               ORDER BY ss.day_of_week, ss.time_slot
             `
             params.push(weekStart)
+            console.log('🔍 [GET_TEACHER_SCHEDULE] Query params:', params)
+            console.log('🔍 [GET_TEACHER_SCHEDULE] Query text:', queryText)
           } else {
             queryText = `
               SELECT ss.id, s.id as student_id, s.name as student_name, 
@@ -625,6 +651,10 @@ async function getTeacherSchedule(event, user) {
         }
     
     const result = await query(queryText, params)
+    console.log('🔍 [GET_TEACHER_SCHEDULE] Query result:', {
+      rowCount: result.rowCount,
+      rows: result.rows
+    })
     return successResponse({ schedules: result.rows })
   } catch (error) {
     console.error('Get teacher schedule error:', error)
@@ -646,11 +676,11 @@ async function getTeacherStats(event, user) {
       SELECT 
         COUNT(DISTINCT st.student_id) as total_students,
         COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
-        COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 
-           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END), 0)) * 100, 2
+           NULLIF(COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN ss.id END), 0)) * 100, 2
         ) as attendance_rate
       FROM teachers t
       LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true

@@ -1820,3 +1820,74 @@ CREATE TABLE file_access_logs (
     action VARCHAR(50) NOT NULL, -- 'view', 'download'
     accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS cache_telemetry (
+  id BIGSERIAL PRIMARY KEY,
+  ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  user_id INT NULL,
+  user_role TEXT NULL,
+  event TEXT NOT NULL,            -- e.g., fetch_200, revalidate_304, cache_hit_fallback, fetch_error
+  resource TEXT NULL,             -- e.g., students, teachers, schedules
+  resource_id TEXT NULL,          -- e.g., page params or specific id
+  endpoint TEXT NULL,             -- e.g., /api/students?page=1&limit=50
+  etag TEXT NULL,                 -- server ETag if present
+  version TEXT NULL,              -- collection-level version if present
+  status TEXT NULL,               -- ok, error, or HTTP code label
+  latency_ms INT NULL             -- request duration in ms
+);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_cache_telemetry_ts ON cache_telemetry (ts DESC);
+CREATE INDEX IF NOT EXISTS idx_cache_telemetry_resource_ts ON cache_telemetry (resource, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_cache_telemetry_user_ts ON cache_telemetry (user_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_cache_telemetry_event_ts ON cache_telemetry (event, ts DESC);
+
+ALTER TABLE student_schedules DROP CONSTRAINT IF EXISTS student_schedules_attendance_status_check;
+ALTER TABLE student_schedules
+  ADD CONSTRAINT student_schedules_attendance_status_check
+  CHECK (attendance_status IN ('scheduled','completed','absent','absent_warned'));
+
+  -- 2) Remove primary-teacher concept from student_teachers
+DROP INDEX IF EXISTS idx_student_teachers_unique_primary;
+ALTER TABLE student_teachers DROP COLUMN IF EXISTS is_primary;
+
+  -- 3) Ensure uniqueness of links (usually exists already)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM   pg_constraint c
+    JOIN   pg_class t ON t.oid = c.conrelid
+    WHERE  t.relname = 'student_teachers'
+    AND    c.contype = 'u'
+  ) THEN
+    ALTER TABLE student_teachers ADD CONSTRAINT student_teachers_student_teacher_unique UNIQUE (student_id, teacher_id);
+  END IF;
+END $$;
+
+  -- 4) Auto-create/reactivate student_teachers on schedule insert (admin creates schedules)
+CREATE OR REPLACE FUNCTION ensure_student_teacher_link()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Reactivate if exists; else insert
+  UPDATE student_teachers
+    SET is_active = TRUE,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE student_id = NEW.student_id
+      AND teacher_id = NEW.teacher_id;
+
+  IF NOT FOUND THEN
+    INSERT INTO student_teachers (student_id, teacher_id, assigned_date, assigned_by, is_active, created_at, updated_at)
+    VALUES (NEW.student_id, NEW.teacher_id, CURRENT_DATE, NULL, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT (student_id, teacher_id) DO UPDATE
+      SET is_active = TRUE,
+          updated_at = EXCLUDED.updated_at;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_ensure_student_teacher_link ON student_schedules;
+CREATE TRIGGER trg_ensure_student_teacher_link
+  AFTER INSERT ON student_schedules
+  FOR EACH ROW EXECUTE FUNCTION ensure_student_teacher_link();

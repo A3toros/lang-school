@@ -700,11 +700,11 @@ const PasswordChangeModal = ({ teacher, onClose, onChangePassword }) => {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (newPassword !== confirmPassword) {
-      // Note: This will be handled by the parent component's notification system
+      alert('Passwords do not match')
       return
     }
     if (newPassword.length < 6) {
-      // Note: This will be handled by the parent component's notification system
+      alert('Password must be at least 6 characters long')
       return
     }
     onChangePassword(teacher.id, newPassword)
@@ -805,7 +805,7 @@ const PasswordViewModal = ({ teacher, onClose, onEditPassword }) => {
       const response = await apiService.getTeacherPassword(teacher.id)
       
       if (response.success) {
-        setPassword(response.password)
+        setPassword(response.password_info.password)
       } else {
         setError(response.error || 'Failed to fetch password')
       }

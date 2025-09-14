@@ -236,7 +236,7 @@ const FileSharing = () => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg max-w-full overflow-hidden h-[600px] flex flex-col">
+    <div className="bg-white rounded-lg shadow-lg max-w-full overflow-hidden h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-3 border-b border-gray-200">
         <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-800">File Sharing</h2>
         <div className="flex space-x-1 overflow-x-auto">

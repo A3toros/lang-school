@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import LastSyncIndicator from '../common/LastSyncIndicator'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import { getCurrentWeekStart, getWeekEnd } from '../../utils/dateUtils'
@@ -204,7 +205,10 @@ const AdminDashboard = () => {
         transition={{ duration: 0.5, delay: 0.4 }}
         className="card p-6"
       >
-        <h3 className="text-lg font-semibold text-neutral-800 mb-4">Teacher Performance</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-neutral-800">Teacher Performance</h3>
+          <LastSyncIndicator resource="teachers" />
+        </div>
         <div className="space-y-4">
           {teacherPerformance.map((teacher, index) => (
             <div key={teacher.id} className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg">

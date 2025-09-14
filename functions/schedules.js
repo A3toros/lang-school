@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { verifyToken, errorResponse, successResponse, query, getPaginationParams, corsHeaders  } = require('./utils/database.js')
 const { getPool } = require('./utils/database.js')
+const crypto = require('crypto')
 
 exports.handler = async (event, context) => {
   // Handle CORS preflight
@@ -176,7 +177,22 @@ async function getSchedules(event, user) {
     }
 
     const result = await query(queryText, params)
-    return successResponse({ schedules: result.rows })
+
+    // ETag based on max(updated_at) and row count
+    const count = result.rows.length
+    let maxUpdated = 'epoch'
+    for (const r of result.rows) {
+      const u = r.updated_at || r.updatedAt || r.updated || null
+      if (u && String(u) > String(maxUpdated)) maxUpdated = String(u)
+    }
+    const etag = crypto.createHash('sha1').update(`${maxUpdated}|${count}`).digest('hex')
+    const ifNoneMatch = event.headers['if-none-match'] || event.headers['If-None-Match']
+    const headers = { ...corsHeaders, ETag: etag }
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return { statusCode: 304, headers, body: '' }
+    }
+
+    return successResponse({ schedules: result.rows }, 200, headers)
   } catch (error) {
     console.error('Get schedules error:', error)
     return errorResponse(500, 'Failed to fetch schedules')
@@ -229,6 +245,15 @@ async function createSchedule(event, user) {
 
     const { student_id, teacher_id, day_of_week, time_slot, week_start_date, end_date } = JSON.parse(event.body)
 
+    console.log('🔍 [CREATE_SCHEDULE] Received data:', {
+      student_id,
+      teacher_id,
+      day_of_week,
+      time_slot,
+      week_start_date,
+      end_date
+    })
+
     if (!student_id || !teacher_id || day_of_week === undefined || !time_slot || !week_start_date) {
       return errorResponse(400, 'Missing required fields')
     }
@@ -252,6 +277,15 @@ async function createSchedule(event, user) {
     await checkSchedulingConflicts(client, student_id, teacher_id, day_of_week, time_slot, week_start_date, 1)
 
     // 3. Create or update schedule template (trigger automatically creates 12 weeks of occurrences)
+    console.log('🔍 [CREATE_SCHEDULE] Creating template with:', {
+      student_id,
+      teacher_id,
+      day_of_week,
+      time_slot,
+      week_start_date,
+      end_date: end_date || null
+    })
+    
     const templateResult = await client.query(`
       INSERT INTO schedule_templates (
         student_id, teacher_id, day_of_week, time_slot, 
@@ -261,23 +295,49 @@ async function createSchedule(event, user) {
       DO UPDATE SET 
         lessons_per_week = EXCLUDED.lessons_per_week,
         end_date = EXCLUDED.end_date,
-        is_active = EXCLUDED.is_active,
+        is_active = TRUE,  -- Always set to TRUE, not EXCLUDED.is_active
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `, [student_id, teacher_id, day_of_week, time_slot, 1, week_start_date, end_date || null])
+
+    console.log('🔍 [CREATE_SCHEDULE] Template created/updated:', templateResult.rows[0])
 
     // 4. Get generated occurrences from the trigger (or create them if updating existing template)
     let occurrences = await client.query(`
       SELECT * FROM student_schedules WHERE template_id = $1
     `, [templateResult.rows[0].id])
 
+    console.log('🔍 [CREATE_SCHEDULE] Initial occurrences found:', occurrences.rows.length)
+
     // If no occurrences exist (template was updated, not inserted), create them
     if (occurrences.rows.length === 0) {
-      await client.query('SELECT create_occurrences_from_template($1, 12)', [templateResult.rows[0].id])
-      occurrences = await client.query(`
-        SELECT * FROM student_schedules WHERE template_id = $1
-      `, [templateResult.rows[0].id])
+      console.log('🔍 [CREATE_SCHEDULE] No occurrences found, creating them...')
+      console.log('🔍 [CREATE_SCHEDULE] Using week_start_date for occurrence creation:', week_start_date)
+      
+      // Create a single occurrence for the specific week instead of using the template function
+      const occurrenceResult = await client.query(`
+        INSERT INTO student_schedules (
+          student_id, teacher_id, day_of_week, time_slot, week_start_date,
+          is_recurring, end_date, original_teacher_id, template_id,
+          lesson_type, attendance_status, is_active, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        RETURNING *
+      `, [
+        student_id, teacher_id, day_of_week, time_slot, week_start_date,
+        true, end_date || null, teacher_id, templateResult.rows[0].id,
+        'scheduled', 'scheduled', true, new Date(), new Date()
+      ])
+      
+      console.log('🔍 [CREATE_SCHEDULE] Created single occurrence:', occurrenceResult.rows[0])
+      occurrences = { rows: occurrenceResult.rows }
     }
+
+    console.log('🔍 [CREATE_SCHEDULE] Final occurrences:', occurrences.rows.map(occ => ({
+      id: occ.id,
+      week_start_date: occ.week_start_date,
+      day_of_week: occ.day_of_week,
+      time_slot: occ.time_slot
+    })))
 
     // 5. Log in schedule_history
     try {
@@ -301,7 +361,21 @@ async function createSchedule(event, user) {
   } catch (error) {
     await client.query('ROLLBACK')
     console.error('Create schedule error:', error)
-    return errorResponse(500, 'Failed to create schedule: ' + error.message)
+    
+    // Check for specific conflict errors and return user-friendly messages
+    if (error.message.includes('Student already has a lesson at this time slot')) {
+      return errorResponse(400, 'Student already has a lesson at this time slot')
+    } else if (error.message.includes('Teacher is already booked at this time')) {
+      return errorResponse(400, 'Teacher is already booked at this time')
+    } else if (error.message.includes('Student is assigned to another teacher')) {
+      return errorResponse(400, 'This student is already assigned to another teacher')
+    } else if (error.message.includes('Student not found')) {
+      return errorResponse(404, 'Student not found. Please refresh and try again')
+    } else if (error.message.includes('Conflict')) {
+      return errorResponse(400, 'There is a scheduling conflict. Please choose a different time slot')
+    } else {
+      return errorResponse(500, 'Failed to create schedule: ' + error.message)
+    }
   } finally {
     client.release()
   }
@@ -551,21 +625,32 @@ async function createSingleLesson(client, studentId, teacherId, dayOfWeek, timeS
   )
   const mondayWeekStart = weekStartResult.rows[0].monday_week_start
 
-  // Get student's primary teacher
-  const primaryTeacherQuery = await client.query(`
-    SELECT primary_teacher_id FROM students WHERE id = $1
-  `, [studentId])
+  // Auto-create student-teacher relationship if it doesn't exist
+  const relationshipCheck = await client.query(`
+    SELECT EXISTS(
+      SELECT 1 FROM student_teachers 
+      WHERE student_id = $1 AND teacher_id = $2 AND is_active = true
+    ) as exists
+  `, [studentId, teacherId])
   
-  const primaryTeacherId = primaryTeacherQuery.rows[0]?.primary_teacher_id || null
+  if (!relationshipCheck.rows[0].exists) {
+    await client.query(`
+      INSERT INTO student_teachers (student_id, teacher_id, assigned_by, assigned_date, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, CURRENT_DATE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (student_id, teacher_id) DO UPDATE
+        SET is_active = TRUE,
+            updated_at = CURRENT_TIMESTAMP
+    `, [studentId, teacherId, user.id])
+  }
 
   const scheduleQuery = `
-    INSERT INTO student_schedules (student_id, teacher_id, primary_teacher_id, day_of_week, time_slot, week_start_date, lesson_type)
-    VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
+    INSERT INTO student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date, lesson_type)
+    VALUES ($1, $2, $3, $4, $5, 'scheduled')
     RETURNING *
   `
   
   const result = await client.query(scheduleQuery, [
-    studentId, teacherId, primaryTeacherId, dayOfWeek, timeSlot, mondayWeekStart
+    studentId, teacherId, dayOfWeek, timeSlot, mondayWeekStart
   ])
   
   return result.rows[0]

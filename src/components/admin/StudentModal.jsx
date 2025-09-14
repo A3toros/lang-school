@@ -11,10 +11,8 @@ const StudentModal = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
-    teacher_id: '',
     lessons_per_week: 1
   })
-  const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -22,17 +20,14 @@ const StudentModal = ({
 
   useEffect(() => {
     if (isOpen) {
-      fetchTeachers()
       if (student) {
         setFormData({
           name: student.name || '',
-          teacher_id: student.teacher_id || '',
           lessons_per_week: student.lessons_per_week || 1
         })
       } else {
         setFormData({
           name: '',
-          teacher_id: '',
           lessons_per_week: 1
         })
       }
@@ -40,21 +35,10 @@ const StudentModal = ({
     }
   }, [isOpen, student])
 
-  const fetchTeachers = async () => {
-    try {
-      const response = await apiService.getTeachers()
-      if (response.success) {
-        setTeachers(response.teachers || [])
-      }
-    } catch (error) {
-      console.error('Error fetching teachers:', error)
-    }
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!formData.name.trim() || !formData.teacher_id) {
+    if (!formData.name.trim()) {
       setError('Please fill in all required fields')
       return
     }
@@ -129,27 +113,6 @@ const StudentModal = ({
           />
         </div>
 
-        <div>
-          <label htmlFor="teacher_id" className="block text-sm font-medium text-neutral-700 mb-1">
-            Assign to Teacher *
-          </label>
-          <select
-            id="teacher_id"
-            name="teacher_id"
-            value={formData.teacher_id}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            required
-            disabled={loading}
-          >
-            <option value="">Select a teacher</option>
-            {teachers.map(teacher => (
-              <option key={teacher.id} value={teacher.id}>
-                {teacher.name}
-              </option>
-            ))}
-          </select>
-        </div>
 
         <div>
           <label htmlFor="lessons_per_week" className="block text-sm font-medium text-neutral-700 mb-1">

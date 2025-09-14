@@ -1,59 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import TeacherAssignmentCard from './TeacherAssignmentCard'
-import LoadingSpinner from '../common/LoadingSpinner'
 
 const TeacherManagementModal = ({ 
   student, 
   isOpen, 
   onClose, 
   assignedTeachers = [], 
-  availableTeachers = [], 
-  onAddTeacher, 
-  onRemoveTeacher, 
-  onSetPrimary,
   loading = false 
 }) => {
-  const [selectedTeacherId, setSelectedTeacherId] = useState('')
-  const [isAdding, setIsAdding] = useState(false)
-
-  // Reset form when modal opens/closes
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedTeacherId('')
-      setIsAdding(false)
-    }
-  }, [isOpen])
-
-  const handleAddTeacher = async () => {
-    if (!selectedTeacherId) return
-    
-    setIsAdding(true)
-    try {
-      await onAddTeacher(parseInt(selectedTeacherId))
-      setSelectedTeacherId('')
-    } catch (error) {
-      console.error('Error adding teacher:', error)
-    } finally {
-      setIsAdding(false)
-    }
-  }
-
-  const handleRemoveTeacher = async (teacherId) => {
-    try {
-      await onRemoveTeacher(teacherId)
-    } catch (error) {
-      console.error('Error removing teacher:', error)
-    }
-  }
-
-  const handleSetPrimary = async (teacherId) => {
-    try {
-      await onSetPrimary(teacherId)
-    } catch (error) {
-      console.error('Error setting primary teacher:', error)
-    }
-  }
 
   if (!isOpen || !student) return null
 
@@ -77,7 +32,7 @@ const TeacherManagementModal = ({
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold text-gray-900">
-                Manage Teachers for {student.name}
+                Teachers for {student.name}
               </h2>
               <button
                 onClick={onClose}
@@ -111,8 +66,6 @@ const TeacherManagementModal = ({
                       <TeacherAssignmentCard
                         key={teacher.id}
                         teacher={teacher}
-                        onRemove={handleRemoveTeacher}
-                        onSetPrimary={handleSetPrimary}
                         loading={loading}
                       />
                     ))}
@@ -121,51 +74,6 @@ const TeacherManagementModal = ({
               </div>
             </div>
 
-            {/* Add Teacher Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-3">
-                Add New Teacher
-              </h3>
-              <div className="flex gap-3">
-                <select
-                  value={selectedTeacherId}
-                  onChange={(e) => setSelectedTeacherId(e.target.value)}
-                  disabled={loading || isAdding}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">Select a teacher to add...</option>
-                  {availableTeachers.map(teacher => (
-                    <option key={teacher.id} value={teacher.id}>
-                      {teacher.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleAddTeacher}
-                  disabled={!selectedTeacherId || loading || isAdding}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center space-x-2"
-                >
-                  {isAdding ? (
-                    <>
-                      <LoadingSpinner size="sm" />
-                      <span>Adding...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      <span>Add Teacher</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              {availableTeachers.length === 0 && (
-                <p className="text-sm text-gray-500 mt-2">
-                  All available teachers are already assigned to this student.
-                </p>
-              )}
-            </div>
           </div>
 
           {/* Footer */}

@@ -4,6 +4,7 @@ import apiService from '../../utils/api'
 import TeacherFolderTree from './TeacherFolderTree'
 import FileViewer from '../admin/FileViewer'
 import { getFileIcon, formatFileSize } from '../../utils/fileTypes'
+import { getFileIconComponent } from '../../utils/FileIconComponent'
 
 const FileLibrary = () => {
   const [files, setFiles] = useState([])
@@ -74,13 +75,22 @@ const FileLibrary = () => {
 
   const handleDownloadFile = async (file) => {
     try {
-      const response = await apiService.downloadFile(file.id)
-      if (response.success) {
-        // Open download URL in new tab
-        window.open(response.download_url, '_blank')
-      } else {
-        alert('Failed to download file: ' + response.error)
-      }
+      console.log('📁 [FILE_LIBRARY] Starting download for file:', file.id)
+      
+      // Use the public download endpoint directly
+      const downloadUrl = `/api/files/${file.id}/download/public`
+      
+      console.log('📁 [FILE_LIBRARY] Download URL:', downloadUrl)
+      
+      // Create a temporary link element to trigger download
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = file.display_name || file.original_name
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      console.log('✅ [FILE_LIBRARY] Download initiated')
     } catch (error) {
       console.error('Error downloading file:', error)
       alert('Failed to download file')
@@ -219,7 +229,7 @@ const FileLibrary = () => {
                     className="flex items-center px-4 py-3 hover:bg-gray-50 transition-colors"
                   >
                     <div className="col-span-6 flex items-center space-x-3 min-w-0">
-                      <span className="text-xl">{getFileIcon(file.file_type)}</span>
+                      <span>{getFileIconComponent(file.file_type)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="font-medium text-sm text-gray-900 truncate" title={file.display_name}>
                           {file.display_name}

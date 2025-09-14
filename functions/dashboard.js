@@ -247,7 +247,8 @@ async function getDashboardStats(event, user) {
           COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
           COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons
         FROM teachers t
-        LEFT JOIN students s ON t.id = s.teacher_id AND s.is_active = true
+        LEFT JOIN student_teachers st ON t.id = st.teacher_id AND st.is_active = true
+        LEFT JOIN students s ON st.student_id = s.id AND s.is_active = true
         LEFT JOIN student_schedules ss ON s.id = ss.student_id 
           AND ss.attendance_date >= CURRENT_DATE - INTERVAL '${days} days'
         WHERE t.is_active = true

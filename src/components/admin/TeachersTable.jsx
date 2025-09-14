@@ -227,11 +227,11 @@ const TeachersTable = () => {
         <table className="w-full table-fixed">
           <thead>
             <tr className="border-b border-neutral-200">
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 w-1/3 sm:w-auto">Teacher</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden sm:table-cell">Students</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden md:table-cell">Lessons</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 hidden lg:table-cell">Attendance</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs text-neutral-700 w-1/3 sm:w-auto">Actions</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-xs text-neutral-700">Teacher</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-xs text-neutral-700 hidden sm:table-cell">Students</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-xs text-neutral-700 hidden md:table-cell">Lessons</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-xs text-neutral-700 hidden lg:table-cell">Attendance</th>
+              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-xs text-neutral-700 w-1/3 sm:w-auto">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -249,42 +249,25 @@ const TeachersTable = () => {
                   transition={{ duration: 0.2 }}
                 >
                   <td className="py-1 sm:py-2 px-1 sm:px-2">
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-primary-100 flex items-center justify-center">
-                        <span className="text-2xs font-semibold text-primary-700">
-                          {teacher.name.split(' ').map(n => n[0]).join('')}
-                        </span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-2xs text-neutral-800 truncate">{teacher.name}</div>
-                        <div className="text-2xs text-neutral-500 truncate">{teacher.email}</div>
-                        {/* Mobile: Show stats inline */}
-                        <div className="sm:hidden mt-1 space-x-1">
-                          <span className="inline-flex items-center px-1 py-0.5 rounded-full text-2xs font-medium bg-primary-100 text-primary-800">
-                            {teacher.student_count || 0} students
-                          </span>
-                          <span className="text-2xs text-neutral-600">
-                            {getLessonCount(teacher.id)} lessons
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                    <span className="text-2xs sm:text-xs font-medium text-neutral-800">
+                      {teacher.name}
+                    </span>
                   </td>
                   
                   <td className="py-1 sm:py-2 px-1 sm:px-2 hidden sm:table-cell">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs font-medium bg-primary-100 text-primary-800">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs sm:text-xs font-medium bg-primary-100 text-primary-800">
                       {teacher.student_count || 0} students
                     </span>
                   </td>
                   
                   <td className="py-1 sm:py-2 px-1 sm:px-2 hidden md:table-cell">
-                    <span className="text-2xs font-medium text-neutral-800">
+                    <span className="text-2xs sm:text-xs font-medium text-neutral-800">
                       {getLessonCount(teacher.id)}
                     </span>
                   </td>
                   
                   <td className="py-1 sm:py-2 px-1 sm:px-2 hidden lg:table-cell">
-                    <span className="text-2xs font-medium text-neutral-800">
+                    <span className="text-2xs sm:text-xs font-medium text-neutral-800">
                       {stats?.attendance_rate ? `${stats.attendance_rate}%` : 'N/A'}
                     </span>
                   </td>
@@ -292,7 +275,7 @@ const TeachersTable = () => {
                   <td className="py-1 sm:py-2 px-1 sm:px-2">
                     <button
                       onClick={() => toggleTeacher(teacher.id)}
-                      className="inline-flex items-center px-1 sm:px-2 py-0.5 sm:py-1 border border-neutral-300 rounded-md text-2xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="inline-flex items-center px-1 sm:px-2 py-0.5 sm:py-1 border border-neutral-300 rounded-md text-2xs sm:text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       <span className="hidden sm:inline">{isExpanded ? 'Hide Students' : 'Show Students'}</span>
                       <span className="sm:hidden">{isExpanded ? 'Hide' : 'Show'}</span>

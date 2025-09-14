@@ -17,7 +17,6 @@ export const mockStudents = [
   {
     id: 1,
     name: 'Emma Wilson',
-    teacher_id: 1,
     lessons_per_week: 2,
     added_date: '2024-01-15',
     is_active: true,
@@ -27,7 +26,6 @@ export const mockStudents = [
   {
     id: 2,
     name: 'James Brown',
-    teacher_id: 1,
     lessons_per_week: 1,
     added_date: '2024-02-03',
     is_active: true,

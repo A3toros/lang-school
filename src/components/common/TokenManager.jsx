@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getStoredTokens, isTokenExpired, shouldRefreshToken } from '../../utils/tokenManager'
+import { tokenManager } from '../../utils/tokenManager'
 import apiService from '../../utils/api'
 
 const TokenManager = ({ children }) => {
@@ -9,14 +9,14 @@ const TokenManager = ({ children }) => {
 
   useEffect(() => {
     const checkTokenStatus = async () => {
-      const tokens = getStoredTokens()
+      const tokens = tokenManager.getStoredTokens()
       
       if (!tokens.accessToken || !tokens.refreshToken) {
         return
       }
 
       // Check if access token is expired or about to expire
-      if (isTokenExpired(tokens.accessToken) || shouldRefreshToken(tokens.accessToken)) {
+      if (tokenManager.isTokenExpired(tokens.accessToken) || tokenManager.shouldRefreshToken(tokens.accessToken)) {
         if (isRefreshing) return
         
         try {
@@ -55,7 +55,7 @@ const TokenManager = ({ children }) => {
       } catch (error) {
         // If we get a 401, try to refresh the token
         if (error.status === 401) {
-          const tokens = getStoredTokens()
+          const tokens = tokenManager.getStoredTokens()
           if (tokens.refreshToken) {
             try {
               const success = await refreshTokens(tokens.refreshToken)

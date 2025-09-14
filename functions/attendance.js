@@ -81,7 +81,6 @@ async function getAttendance(event, user) {
         JOIN students s ON ss.student_id = s.id
         JOIN teachers t ON ss.teacher_id = t.id
         WHERE ss.week_start_date >= get_current_week_start()
-        AND ss.attendance_status IN ('completed', 'absent', 'absent_warned')
       `
 
       // Add filters for upcoming_schedule_view
@@ -130,8 +129,7 @@ async function getAttendance(event, user) {
         FROM student_schedules ss
         JOIN students s ON ss.student_id = s.id
         JOIN teachers t ON ss.teacher_id = t.id
-        WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
-          AND s.is_active = true
+        WHERE s.is_active = true
           AND t.is_active = true
       `
 
@@ -237,44 +235,6 @@ async function markAttendance(event, user) {
       
       const result = await client.query(queryText, [status, attendanceDate, schedule_id])
       
-      // Check for consecutive absences and auto-warn if needed
-      if (status === 'absent') {
-        const consecutiveAbsences = await client.query(
-          `SELECT COUNT(*) as consecutive_count
-           FROM student_schedules 
-           WHERE student_id = $1 
-             AND attendance_status = 'absent' 
-             AND attendance_date >= $2::date - INTERVAL '7 days'
-             AND attendance_date <= $2::date`,
-          [schedule.student_id, attendanceDate]
-        )
-
-        const consecutiveCount = parseInt(consecutiveAbsences.rows[0].consecutive_count)
-        
-        // If 2+ consecutive absences, auto-update to absent_warned
-        if (consecutiveCount >= 2) {
-          await client.query(
-            `UPDATE student_schedules 
-             SET attendance_status = 'absent_warned', updated_at = CURRENT_TIMESTAMP
-             WHERE student_id = $1 
-               AND attendance_status = 'absent' 
-               AND attendance_date >= $2 - INTERVAL '7 days'
-               AND attendance_date <= $2`,
-            [schedule.student_id, attendanceDate]
-          )
-
-          // Log warning in schedule_history
-          try {
-            await client.query(
-              `INSERT INTO schedule_history (schedule_id, action, old_teacher_id, new_teacher_id, changed_by, notes)
-               VALUES ($1, 'warning', $2, $2, $3, 'Auto-warning for consecutive absences')`,
-              [schedule_id, schedule.teacher_id, user.userId]
-            )
-          } catch (e) {
-            // ignore if history table not present
-          }
-        }
-      }
     }
 
     await client.query('COMMIT')
@@ -425,7 +385,7 @@ async function getAttendanceStats(event, user) {
       SELECT 
         COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
-        COUNT(CASE WHEN ss.attendance_status = 'scheduled' THEN 1 END) as scheduled_lessons,
+        COUNT(CASE WHEN ss.attendance_status = 'absent_warned' THEN 1 END) as warned_lessons,
         COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent', 'absent_warned') THEN ss.id END) as total_lessons,
         ROUND(
           (COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END)::DECIMAL / 

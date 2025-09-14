@@ -176,6 +176,30 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const refreshTokens = async (refreshToken) => {
+    try {
+      apiDebugger.info('AUTH_CONTEXT', 'Refreshing tokens')
+      const newTokens = await apiService.refreshToken(refreshToken)
+      
+      if (newTokens.success && newTokens.accessToken && newTokens.refreshToken) {
+        tokenManager.storeTokens(newTokens.accessToken, newTokens.refreshToken)
+        
+        // Verify the new token and get user data
+        const userData = await apiService.verifyToken()
+        setUser(userData.user)
+        
+        apiDebugger.success('AUTH_CONTEXT', 'Tokens refreshed successfully')
+        return true
+      } else {
+        apiDebugger.warning('AUTH_CONTEXT', 'Token refresh failed - invalid response')
+        return false
+      }
+    } catch (error) {
+      apiDebugger.error('AUTH_CONTEXT', 'Token refresh failed', { error: error.message })
+      return false
+    }
+  }
+
   const logout = () => {
     apiDebugger.info('AUTH_CONTEXT', 'Logout initiated', { 
       userId: user?.id,
@@ -190,6 +214,8 @@ export const AuthProvider = ({ children }) => {
     user,
     login,
     logout,
+    refreshTokens,
+    refreshToken: refreshTokens, // Alias for useTokenRefresh compatibility
     loading,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin',

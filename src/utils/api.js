@@ -1,8 +1,26 @@
 // API service for making authenticated requests to Netlify Functions
 import apiDebugger from './debug'
 import { tokenManager } from './tokenManager'
+import { initializeDataCache, buildCacheKeys } from './dataCache'
 
 const API_BASE_URL = '/api'
+
+// Initialize a shared data cache (namespaced per user if available)
+const userNamespace = (() => {
+  try {
+    const user = tokenManager.getUserData()
+    return user?.id ? `user:${user.id}` : 'anon'
+  } catch (_) {
+    return 'anon'
+  }
+})()
+const dataCachePromise = initializeDataCache(userNamespace).then(cache => {
+  console.log(`🔧 [CACHE] Initialized cache for namespace: ${userNamespace}`)
+  return cache
+}).catch(error => {
+  console.error(`❌ [CACHE] Failed to initialize cache:`, error)
+  throw error
+})
 
 class ApiService {
   constructor() {
@@ -185,6 +203,200 @@ class ApiService {
     }
   }
 
+  // Make request with caching (ETag-aware). Returns cached data on 304 or network error.
+  async fetchWithCache(endpoint, options = {}, meta = {}) {
+    const url = `${this.baseURL}${endpoint}`
+    const method = options.method || 'GET'
+    const resource = meta.resource || endpoint.split('?')[0].replace(/^\//, '').replace(/\//g, ':')
+    
+    // Normalize cache key - use resource + query params for better cache sharing
+    const queryString = endpoint.includes('?') ? endpoint.split('?')[1] : ''
+    const normalizedQuery = queryString ? `?${queryString}` : ''
+    const cacheKeyHint = meta.cacheKey || `${resource}${normalizedQuery}`
+    const { dataKey, etagKey } = buildCacheKeys(resource, cacheKeyHint)
+
+    const cache = await dataCachePromise
+    const cached = await cache.get(dataKey)
+    const cachedEtag = await cache.get(etagKey)
+    
+    // Debug cache state
+    console.log(`🔍 [CACHE] ${endpoint}`, {
+      hasCachedData: !!cached,
+      hasCachedEtag: !!cachedEtag,
+      dataKey,
+      etagKey,
+      resource,
+      cacheKeyHint,
+      cachedDataSize: cached ? JSON.stringify(cached).length : 0
+    })
+
+    const headers = {
+      ...this.getAuthHeaders(),
+      ...(options.headers || {})
+    }
+    if (cachedEtag && typeof cachedEtag === 'string') {
+      headers['If-None-Match'] = cachedEtag
+    }
+
+    const startTime = Date.now()
+    apiDebugger.logRequest(method, url, options.body ? JSON.parse(options.body) : null)
+
+    try {
+      const response = await fetch(url, { ...options, headers })
+      const duration = Date.now() - startTime
+      const responseHeaders = Object.fromEntries(response.headers.entries())
+
+      apiDebugger.debug('NETWORK', `Response received for ${method} ${url}`, {
+        status: response.status,
+        statusText: response.statusText,
+        duration: `${duration}ms`,
+        headers: responseHeaders
+      })
+
+      if (response.status === 304 && cached) {
+        apiDebugger.success('CACHE', 'Serving cached data (304)', { endpoint })
+        this.logCacheTelemetry('revalidate_304', { resource, status: 'ok', latencyMs: duration, endpoint: url })
+        return cached
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        const error = new Error(errorData.error || `HTTP ${response.status}`)
+        error.status = response.status
+        apiDebugger.logError(method, url, error)
+        // Fallback to cache on network error/5xx
+        if (cached) {
+          console.log(`⚠️ [CACHE] Network error, returning cached data for ${endpoint}`, {
+            status: response.status,
+            hasCachedData: !!cached,
+            cachedDataSize: JSON.stringify(cached).length
+          })
+          // Dispatch cache fallback event
+          window.dispatchEvent(new CustomEvent('cache:fallback', { 
+            detail: { endpoint, resource, reason: 'network_error' } 
+          }))
+          apiDebugger.warning('CACHE', 'Network error, returning cached data', { endpoint })
+          this.logCacheTelemetry('cache_hit_fallback', { resource, status: 'error', latencyMs: duration, endpoint: url })
+          return cached
+        } else {
+          console.log(`❌ [CACHE] Network error and no cached data for ${endpoint}`, {
+            status: response.status,
+            hasCachedData: !!cached
+          })
+        }
+        this.logCacheTelemetry('fetch_error', { resource, status: String(response.status), latencyMs: duration, endpoint: url })
+        throw error
+      }
+
+      const data = await response.json()
+      apiDebugger.logResponse(method, url, { status: response.status, data }, duration)
+
+      // Persist new payload and etag
+      const etag = response.headers.get('ETag') || response.headers.get('Etag') || response.headers.get('etag')
+      // Ensure data is cloneable by deep cloning
+      const cloneableData = JSON.parse(JSON.stringify(data))
+      
+      console.log(`💾 [CACHE] Storing data for ${endpoint}`, {
+        dataKey,
+        etagKey,
+        dataSize: JSON.stringify(cloneableData).length,
+        hasEtag: !!etag
+      })
+      
+      await cache.set(dataKey, cloneableData)
+      if (etag) {
+        await cache.set(etagKey, etag)
+      }
+      
+      // Cache warming: Store the same data under common query variations
+      await this.warmCacheForResource(resource, cloneableData, etag, cache)
+      this.logCacheTelemetry('fetch_200', { resource, status: 'ok', latencyMs: duration, endpoint: url, etag })
+      return data
+    } catch (error) {
+      console.log(`💥 [CACHE] Exception occurred for ${endpoint}`, {
+        error: error.message,
+        hasCachedData: !!cached,
+        cachedDataSize: cached ? JSON.stringify(cached).length : 0
+      })
+      apiDebugger.logError(method, url, error)
+      if (cached) {
+        console.log(`✅ [CACHE] Exception fallback, returning cached data for ${endpoint}`)
+        // Dispatch cache fallback event
+        window.dispatchEvent(new CustomEvent('cache:fallback', { 
+          detail: { endpoint, resource, reason: 'exception' } 
+        }))
+        apiDebugger.warning('CACHE', 'Error occurred, returning cached data', { endpoint })
+        this.logCacheTelemetry('cache_hit_error', { resource, status: 'error', latencyMs: Date.now() - startTime, endpoint: url })
+        return cached
+      } else {
+        console.log(`❌ [CACHE] Exception and no cached data for ${endpoint}`)
+      }
+      this.logCacheTelemetry('fetch_error_throw', { resource, status: error?.message || 'error', endpoint: url })
+      throw error
+    }
+  }
+
+  // Cache warming: Store data under common query variations for better offline support
+  async warmCacheForResource(resource, data, etag, cache) {
+    try {
+      const commonVariations = {
+        'teachers': [
+          '?status=active',
+          '?status=inactive', 
+          ''
+        ],
+        'students': [
+          '?status=active&limit=100',
+          '?status=active&page=1&limit=50&sort_by=added_date&sort_order=desc',
+          '?status=active'
+        ]
+      }
+      
+      const variations = commonVariations[resource] || []
+      
+      for (const variation of variations) {
+        const warmKey = `${resource}${variation}`
+        const { dataKey, etagKey } = buildCacheKeys(resource, warmKey)
+        
+        // Only store if not already cached
+        const existing = await cache.get(dataKey)
+        if (!existing) {
+          console.log(`🔥 [CACHE] Warming cache for ${warmKey}`)
+          await cache.set(dataKey, data)
+          if (etag) {
+            await cache.set(etagKey, etag)
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Cache warming failed:', error)
+    }
+  }
+
+  // Versions endpoint to support background checks
+  async getVersions() {
+    return this.makeRequest('/versions')
+  }
+
+  // Sampled telemetry for cache behavior (send for ~5% of sessions)
+  async logCacheTelemetry(eventName, payload = {}) {
+    try {
+      if (!this._telemetrySample) {
+        // Stable per-session sample
+        this._telemetrySample = Math.random() < 0.05
+      }
+      if (!this._telemetrySample) return
+      const safe = { event: eventName, ...payload }
+      return fetch(`${this.baseURL}/analytics/cache`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders() },
+        body: JSON.stringify(safe)
+      }).catch(() => null)
+    } catch (_) {
+      // ignore
+    }
+  }
+
   // Authentication API
   async login(username, password) {
     apiDebugger.info('AUTH', 'Attempting login', { username, hasPassword: !!password })
@@ -275,7 +487,7 @@ class ApiService {
       }
     })
     const queryString = params.toString()
-    return this.makeRequest(`/teachers${queryString ? `?${queryString}` : ''}`)
+    return this.fetchWithCache(`/teachers${queryString ? `?${queryString}` : ''}`, { method: 'GET' }, { resource: 'teachers', cacheKey: queryString })
   }
 
   async getTeacher(teacherId) {
@@ -534,7 +746,7 @@ class ApiService {
       }
     })
     const queryString = params.toString()
-    return this.makeRequest(`/schedules${queryString ? `?${queryString}` : ''}`)
+    return this.fetchWithCache(`/schedules${queryString ? `?${queryString}` : ''}`, { method: 'GET' }, { resource: 'schedules', cacheKey: queryString })
   }
 
   async getWeeklySchedule(date) {
@@ -954,7 +1166,7 @@ class ApiService {
       })
       
       const queryString = params.toString()
-      const result = await this.makeRequest(`/students${queryString ? `?${queryString}` : ''}`)
+      const result = await this.fetchWithCache(`/students${queryString ? `?${queryString}` : ''}`, { method: 'GET' }, { resource: 'students', cacheKey: queryString })
       
       if (result.success) {
         apiDebugger.success('STUDENTS', 'Students fetched successfully', { 
@@ -1487,23 +1699,41 @@ class ApiService {
     }
   }
 
-  async setPrimaryTeacher(studentId, teacherId) {
+  // Student Suggestions API
+  async getCurrentStudents(teacherId) {
     try {
-      apiDebugger.info('TEACHER_MGMT', 'Setting primary teacher', { studentId, teacherId })
+      apiDebugger.info('STUDENT_SUGGESTIONS', 'Fetching current students', { teacherId })
       
-      const result = await this.makeRequest(`/students/${studentId}/teachers/${teacherId}/primary`, {
-        method: 'PUT'
-      })
+      const result = await this.makeRequest(`/students/teacher/${teacherId}/current`)
       
       if (result.success) {
-        apiDebugger.success('TEACHER_MGMT', 'Primary teacher updated successfully')
+        apiDebugger.success('STUDENT_SUGGESTIONS', 'Current students fetched successfully', { count: result.students?.length || 0 })
       } else {
-        apiDebugger.warning('TEACHER_MGMT', 'Failed to update primary teacher', { error: result.error })
+        apiDebugger.warning('STUDENT_SUGGESTIONS', 'Failed to fetch current students', { error: result.error })
       }
       
       return result
     } catch (error) {
-      apiDebugger.error('TEACHER_MGMT', 'Error setting primary teacher', { error: error.message })
+      apiDebugger.error('STUDENT_SUGGESTIONS', 'Error fetching current students', { error: error.message })
+      throw error
+    }
+  }
+
+  async getHistoryStudents(teacherId) {
+    try {
+      apiDebugger.info('STUDENT_SUGGESTIONS', 'Fetching history students', { teacherId })
+      
+      const result = await this.makeRequest(`/students/teacher/${teacherId}/history`)
+      
+      if (result.success) {
+        apiDebugger.success('STUDENT_SUGGESTIONS', 'History students fetched successfully', { count: result.students?.length || 0 })
+      } else {
+        apiDebugger.warning('STUDENT_SUGGESTIONS', 'Failed to fetch history students', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENT_SUGGESTIONS', 'Error fetching history students', { error: error.message })
       throw error
     }
   }
@@ -1682,7 +1912,7 @@ class ApiService {
     apiDebugger.info('FILES', 'Downloading file', { fileId })
     
     try {
-      const result = await this.makeRequest(`/files/${fileId}/download`)
+      const result = await this.makePublicRequest(`/files/${fileId}/download/public`)
       
       if (result.success) {
         apiDebugger.success('FILES', 'File download initiated', { fileId })
