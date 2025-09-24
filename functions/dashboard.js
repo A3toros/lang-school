@@ -184,7 +184,7 @@ async function getTeacherDashboard(event, user) {
         s.name as student_name,
         ss.day_of_week,
         ss.time_slot,
-        ss.week_start_date,
+        ss.week_start_date::text,
         ss.attendance_status
       FROM student_schedules ss
       JOIN students s ON ss.student_id = s.id
@@ -340,7 +340,7 @@ async function getUpcomingLessons(event, user) {
           s.name as student_name,
           ss.day_of_week,
           ss.time_slot,
-          ss.week_start_date,
+          ss.week_start_date::text,
           ss.attendance_status
         FROM student_schedules ss
         JOIN teachers t ON ss.teacher_id = t.id
@@ -357,7 +357,7 @@ async function getUpcomingLessons(event, user) {
           s.name as student_name,
           ss.day_of_week,
           ss.time_slot,
-          ss.week_start_date,
+          ss.week_start_date::text,
           ss.attendance_status
         FROM student_schedules ss
         JOIN students s ON ss.student_id = s.id

@@ -182,9 +182,6 @@ export const validatePasswordAgainstUser = (password, userInfo) => {
     issues.push('Password should not contain your username')
   }
   
-  if (userInfo.email && password.toLowerCase().includes(userInfo.email.split('@')[0].toLowerCase())) {
-    issues.push('Password should not contain your email')
-  }
   
   if (userInfo.name && password.toLowerCase().includes(userInfo.name.toLowerCase())) {
     issues.push('Password should not contain your name')

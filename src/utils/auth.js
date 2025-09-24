@@ -16,10 +16,6 @@ export const validateCredentials = (username, password) => {
   return { valid: true }
 }
 
-export const validateEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
 
 export const validatePasswordStrength = (password) => {
   const minLength = 6
@@ -132,7 +128,6 @@ export const formatAuthError = (error) => {
 
 export default {
   validateCredentials,
-  validateEmail,
   validatePasswordStrength,
   sanitizeInput,
   generatePassword,

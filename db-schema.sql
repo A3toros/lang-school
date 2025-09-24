@@ -2111,3 +2111,18 @@ WHERE EXTRACT(YEAR FROM week_start_date) = 2025
   AND EXTRACT(MONTH FROM week_start_date) = 9
 ORDER BY teacher_id, week_start_date
 LIMIT 10;
+
+ALTER TABLE teachers 
+ADD COLUMN meeting_id VARCHAR(255),
+ADD COLUMN meeting_password VARCHAR(255);
+
+-- Remove email column (after data migration if needed)
+-- Note: Uncomment the line below after confirming no data migration is needed
+-- ALTER TABLE teachers DROP COLUMN email;
+
+-- Add comments for documentation
+COMMENT ON COLUMN teachers.meeting_id IS 'Meeting room ID for online classes';
+COMMENT ON COLUMN teachers.meeting_password IS 'Meeting room password for online classes';
+
+-- Create index on meeting_id for faster lookups (optional)
+CREATE INDEX IF NOT EXISTS idx_teachers_meeting_id ON teachers(meeting_id);

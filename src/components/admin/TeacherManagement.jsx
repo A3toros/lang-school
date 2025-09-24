@@ -8,7 +8,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [teachers, setTeachers] = useState([])
   const [inactiveTeachers, setInactiveTeachers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('active') // 'active' or 'inactive'
+  const [activeTab, setActiveTab] = useState('active') // 'active', 'idpass', or 'inactive'
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -16,11 +16,12 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [editingTeacher, setEditingTeacher] = useState(null)
   const [newTeacher, setNewTeacher] = useState({
     name: '',
-    email: '',
     username: '',
     password: '',
     description: '',
-    photo_url: ''
+    photo_url: '',
+    meeting_id: '',
+    meeting_password: ''
   })
   const [showStatusConfirm, setShowStatusConfirm] = useState(false)
   const [statusChangeData, setStatusChangeData] = useState(null)
@@ -34,9 +35,10 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   useEffect(() => {
     if (activeTab === 'active') {
       fetchTeachers()
-    } else {
+    } else if (activeTab === 'inactive') {
       fetchInactiveTeachers()
     }
+    // For 'idpass' tab, we use the same data as 'active' tab
   }, [activeTab])
 
   // Initial load - fetch both active and inactive teachers to ensure accurate counts
@@ -85,7 +87,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
 
   const handleAddTeacher = async () => {
     try {
-      if (!newTeacher.name || !newTeacher.email || !newTeacher.username || !newTeacher.password) {
+      if (!newTeacher.name || !newTeacher.username || !newTeacher.password) {
         showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
         return
       }
@@ -94,21 +96,23 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
 
       const response = await apiService.createTeacher({
         name: newTeacher.name,
-        email: newTeacher.email,
         username: newTeacher.username,
         password: newTeacher.password,
         description: newTeacher.description,
-        photo_url: newTeacher.photo_url
+        photo_url: newTeacher.photo_url,
+        meeting_id: newTeacher.meeting_id,
+        meeting_password: newTeacher.meeting_password
       })
 
       if (response.success) {
         setNewTeacher({
           name: '',
-          email: '',
           username: '',
           password: '',
           description: '',
-          photo_url: ''
+          photo_url: '',
+          meeting_id: '',
+          meeting_password: ''
         })
         setShowAddModal(false)
         fetchTeachers()
@@ -124,7 +128,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
 
   const handleEditTeacher = async () => {
     try {
-      if (!editingTeacher.name || !editingTeacher.email) {
+      if (!editingTeacher.name) {
         showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
         return
       }
@@ -133,15 +137,17 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
 
       const response = await apiService.updateTeacher(editingTeacher.id, {
         name: editingTeacher.name,
-        email: editingTeacher.email,
         description: editingTeacher.description,
-        photo_url: editingTeacher.photo_url
+        photo_url: editingTeacher.photo_url,
+        meeting_id: editingTeacher.meeting_id,
+        meeting_password: editingTeacher.meeting_password
       })
 
       if (response.success) {
         setEditingTeacher(null)
         setShowEditModal(false)
-        fetchTeachers()
+        // Component-level refresh - only fetch teachers data
+        await fetchTeachers()
         showSuccessNotification('Success!', 'Teacher updated successfully', 'success')
       }
     } catch (error) {
@@ -165,7 +171,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         // Deactivating teacher
         const response = await apiService.deactivateTeacher(teacher.id)
         if (response.success) {
-          // Refresh both active and inactive teachers to get accurate counts
+          // Component-level refresh - only fetch teachers data
           await Promise.all([
             fetchTeachers(),
             fetchInactiveTeachers()
@@ -176,7 +182,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         // Reactivating teacher
         const response = await apiService.reactivateTeacher(teacher.id)
         if (response.success) {
-          // Refresh both active and inactive teachers to get accurate counts
+          // Component-level refresh - only fetch teachers data
           await Promise.all([
             fetchTeachers(),
             fetchInactiveTeachers()
@@ -271,6 +277,16 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
           Active Teachers ({teachers.length})
         </button>
         <button
+          onClick={() => setActiveTab('idpass')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            activeTab === 'idpass'
+              ? 'bg-primary-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          ID/Pass
+        </button>
+        <button
           onClick={() => setActiveTab('inactive')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
             activeTab === 'inactive'
@@ -282,18 +298,84 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         </button>
       </div>
 
-      {/* Teachers Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          <div className="col-span-full flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+      {/* ID/Pass Tab Content */}
+      {activeTab === 'idpass' ? (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-left text-2xs sm:text-xs md:text-sm font-semibold text-neutral-800">Teacher</th>
+                  <th className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-left text-2xs sm:text-xs md:text-sm font-semibold text-neutral-800">Meeting ID</th>
+                  <th className="px-1 sm:px-2 md:px-4 py-1 sm:py-2 text-left text-2xs sm:text-xs md:text-sm font-semibold text-neutral-800">Meeting Pass</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="3" className="px-4 py-8 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500 mx-auto"></div>
+                    </td>
+                  </tr>
+                ) : teachers.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" className="px-4 py-8 text-center text-gray-500">
+                      No teachers found
+                    </td>
+                  </tr>
+                ) : (
+                  teachers.map((teacher) => (
+                    <tr key={teacher.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-1 sm:px-2 md:px-4 py-1 sm:py-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                            {teacher.photo_url ? (
+                              <img
+                                src={teacher.photo_url}
+                                alt={teacher.name}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-primary-600 font-semibold text-sm">
+                                {teacher.name.charAt(0)}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-2xs sm:text-xs md:text-sm font-medium text-neutral-800 truncate">
+                            {teacher.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-1 sm:px-2 md:px-4 py-1 sm:py-2">
+                        <span className="text-2xs sm:text-xs md:text-sm text-neutral-600">
+                          {teacher.meeting_id || '-'}
+                        </span>
+                      </td>
+                      <td className="px-1 sm:px-2 md:px-4 py-1 sm:py-2">
+                        <span className="text-2xs sm:text-xs md:text-sm text-neutral-600">
+                          {teacher.meeting_password || '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        ) : (activeTab === 'active' ? teachers : inactiveTeachers).length === 0 ? (
-          <div className="col-span-full text-center text-gray-500 py-8">
-            No {activeTab} teachers found
-          </div>
-        ) : (
-          (activeTab === 'active' ? teachers : inactiveTeachers).map((teacher) => (
+        </div>
+      ) : (
+        /* Teachers Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loading ? (
+            <div className="col-span-full flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+            </div>
+          ) : (activeTab === 'active' ? teachers : inactiveTeachers).length === 0 ? (
+            <div className="col-span-full text-center text-gray-500 py-8">
+              No {activeTab} teachers found
+            </div>
+          ) : (
+            (activeTab === 'active' ? teachers : inactiveTeachers).map((teacher) => (
             <motion.div
               key={teacher.id}
               className={`border rounded-lg p-4 cursor-pointer transition-all duration-200 ${
@@ -324,7 +406,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                     {teacher.name}
                   </h3>
                   <p className="text-sm text-gray-500 truncate">
-                    {teacher.email}
+                    {teacher.meeting_id || 'No Meeting ID'}
                   </p>
                 </div>
               </div>
@@ -394,7 +476,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
             </motion.div>
           ))
         )}
-      </div>
+        </div>
+      )}
 
       {/* Add Teacher Modal */}
       {showAddModal && (
@@ -415,10 +498,18 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <input
-                type="email"
-                placeholder="Email *"
-                value={newTeacher.email}
-                onChange={(e) => setNewTeacher(prev => ({ ...prev, email: e.target.value }))}
+                type="text"
+                placeholder="Meeting ID"
+                value={newTeacher.meeting_id}
+                onChange={(e) => setNewTeacher(prev => ({ ...prev, meeting_id: e.target.value }))}
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+              <input
+                type="text"
+                placeholder="Meeting Password"
+                value={newTeacher.meeting_password}
+                onChange={(e) => setNewTeacher(prev => ({ ...prev, meeting_password: e.target.value }))}
                 disabled={isAddingTeacher}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
@@ -472,7 +563,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
               </button>
               <button
                 onClick={handleAddTeacher}
-                disabled={isAddingTeacher || !newTeacher.name.trim() || !newTeacher.email.trim() || !newTeacher.username.trim() || !newTeacher.password.trim()}
+                disabled={isAddingTeacher || !newTeacher.name.trim() || !newTeacher.username.trim() || !newTeacher.password.trim()}
                 className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[140px]"
               >
                 {isAddingTeacher ? (
@@ -511,12 +602,23 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Meeting ID</label>
                 <input
-                  type="email"
-                  placeholder="Email *"
-                  value={editingTeacher.email}
-                  onChange={(e) => setEditingTeacher(prev => ({ ...prev, email: e.target.value }))}
+                  type="text"
+                  placeholder="Meeting ID"
+                  value={editingTeacher.meeting_id || ''}
+                  onChange={(e) => setEditingTeacher(prev => ({ ...prev, meeting_id: e.target.value }))}
+                  disabled={isUpdatingTeacher}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Meeting Password</label>
+                <input
+                  type="text"
+                  placeholder="Meeting Password"
+                  value={editingTeacher.meeting_password || ''}
+                  onChange={(e) => setEditingTeacher(prev => ({ ...prev, meeting_password: e.target.value }))}
                   disabled={isUpdatingTeacher}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
@@ -561,7 +663,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
               </button>
               <button
                 onClick={handleEditTeacher}
-                disabled={isUpdatingTeacher || !editingTeacher.name.trim() || !editingTeacher.email.trim()}
+                disabled={isUpdatingTeacher || !editingTeacher.name.trim()}
                 className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[140px]"
               >
                 {isUpdatingTeacher ? (

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import ImageUploader from '../common/ImageUploader'
 import TeacherShowcase from '../login/TeacherShowcase'
+import SuccessNotification from '../common/SuccessNotification'
 
 const ContentManagement = () => {
   const [activeTab, setActiveTab] = useState('mission')
@@ -32,10 +33,18 @@ const ContentManagement = () => {
   })
   const [isSavingMission, setIsSavingMission] = useState(false)
   const [isSavingCourse, setIsSavingCourse] = useState(false)
+  const [showNotification, setShowNotification] = useState(false)
+  const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
 
   useEffect(() => {
     fetchContent()
   }, [])
+
+  // Helper function to show notifications
+  const showNotificationMessage = (title, message, type = 'success') => {
+    setNotificationData({ title, message, type })
+    setShowNotification(true)
+  }
 
   const fetchContent = async () => {
     try {
@@ -71,11 +80,11 @@ const ContentManagement = () => {
       setIsSavingMission(true)
       const response = await apiService.updateMissionContent(missionContent)
       if (response.success) {
-        alert('Mission content saved successfully')
+        showNotificationMessage('Success!', 'Mission content saved successfully', 'success')
       }
     } catch (error) {
       console.error('Error saving mission content:', error)
-      alert('Failed to save mission content')
+      showNotificationMessage('Error', 'Failed to save mission content', 'error')
     } finally {
       setIsSavingMission(false)
     }
@@ -194,11 +203,11 @@ const ContentManagement = () => {
         })
         setShowCourseModal(false)
         fetchContent()
-        alert('Course added successfully')
+        showNotificationMessage('Success!', 'Course added successfully', 'success')
       }
     } catch (error) {
       console.error('Error adding course:', error)
-      alert('Failed to add course')
+      showNotificationMessage('Error', 'Failed to add course', 'error')
     } finally {
       setIsSavingCourse(false)
     }
@@ -218,11 +227,11 @@ const ContentManagement = () => {
         setEditingCourse(null)
         setShowCourseModal(false)
         fetchContent()
-        alert('Course updated successfully')
+        showNotificationMessage('Success!', 'Course updated successfully', 'success')
       }
     } catch (error) {
       console.error('Error updating course:', error)
-      alert('Failed to update course')
+      showNotificationMessage('Error', 'Failed to update course', 'error')
     } finally {
       setIsSavingCourse(false)
     }
@@ -234,11 +243,11 @@ const ContentManagement = () => {
         const response = await apiService.deleteCourse(courseId)
         if (response.success) {
           fetchContent()
-          alert('Course deleted successfully')
+          showNotificationMessage('Success!', 'Course deleted successfully', 'success')
         }
       } catch (error) {
         console.error('Error deleting course:', error)
-        alert('Failed to delete course')
+        showNotificationMessage('Error', 'Failed to delete course', 'error')
       }
     }
   }
@@ -251,7 +260,7 @@ const ContentManagement = () => {
       }
     } catch (error) {
       console.error('Error toggling course:', error)
-      alert('Failed to toggle course')
+      showNotificationMessage('Error', 'Failed to toggle course', 'error')
     }
   }
 
@@ -652,6 +661,15 @@ const ContentManagement = () => {
           </motion.div>
         </div>
       )}
+
+      {/* Success Notification */}
+      <SuccessNotification
+        isOpen={showNotification}
+        onClose={() => setShowNotification(false)}
+        title={notificationData.title}
+        message={notificationData.message}
+        type={notificationData.type}
+      />
     </div>
   )
 }

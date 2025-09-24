@@ -13,9 +13,10 @@ const EditTeacherModal = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
     description: '',
-    photo_url: ''
+    photo_url: '',
+    meeting_id: '',
+    meeting_password: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -25,9 +26,10 @@ const EditTeacherModal = ({
     if (isOpen && teacher) {
       setFormData({
         name: teacher.name || '',
-        email: teacher.email || '',
         description: teacher.description || '',
-        photo_url: teacher.photo_url || ''
+        photo_url: teacher.photo_url || '',
+        meeting_id: teacher.meeting_id || '',
+        meeting_password: teacher.meeting_password || ''
       })
       setError('')
     }
@@ -36,7 +38,7 @@ const EditTeacherModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!formData.name.trim() || !formData.email.trim()) {
+    if (!formData.name.trim()) {
       setError('Please fill in all required fields')
       return
     }
@@ -133,17 +135,30 @@ const EditTeacherModal = ({
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-neutral-700 mb-1">
-              Email *
+            <label htmlFor="meeting_id" className="block text-sm font-medium text-neutral-700 mb-1">
+              Meeting ID
             </label>
             <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
+              type="text"
+              id="meeting_id"
+              name="meeting_id"
+              value={formData.meeting_id}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              required
+              disabled={loading}
+            />
+          </div>
+          <div>
+            <label htmlFor="meeting_password" className="block text-sm font-medium text-neutral-700 mb-1">
+              Meeting Password
+            </label>
+            <input
+              type="text"
+              id="meeting_password"
+              name="meeting_password"
+              value={formData.meeting_password}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               disabled={loading}
             />
           </div>

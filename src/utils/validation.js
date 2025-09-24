@@ -1,12 +1,5 @@
 // Validation utility functions
 
-export const validateEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return {
-    valid: emailRegex.test(email),
-    message: emailRegex.test(email) ? '' : 'Please enter a valid email address'
-  }
-}
 
 export const validatePassword = (password) => {
   const minLength = 6
@@ -304,7 +297,6 @@ export const validateForm = (formData, validationRules) => {
 }
 
 export default {
-  validateEmail,
   validatePassword,
   calculatePasswordStrength,
   validateUsername,

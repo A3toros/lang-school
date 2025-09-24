@@ -11,11 +11,12 @@ const AddTeacherModal = ({
 }) => {
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
     username: '',
     password: '',
     description: '',
-    photo_url: ''
+    photo_url: '',
+    meeting_id: '',
+    meeting_password: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -24,7 +25,7 @@ const AddTeacherModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!formData.name.trim() || !formData.email.trim() || !formData.username.trim() || !formData.password.trim()) {
+    if (!formData.name.trim() || !formData.username.trim() || !formData.password.trim()) {
       setError('Please fill in all required fields')
       return
     }
@@ -41,11 +42,12 @@ const AddTeacherModal = ({
         // Reset form
         setFormData({
           name: '',
-          email: '',
           username: '',
           password: '',
           description: '',
-          photo_url: ''
+          photo_url: '',
+          meeting_id: '',
+          meeting_password: ''
         })
       } else {
         setError(response.error || 'Failed to create teacher')
@@ -121,17 +123,30 @@ const AddTeacherModal = ({
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-neutral-700 mb-1">
-              Email *
+            <label htmlFor="meeting_id" className="block text-sm font-medium text-neutral-700 mb-1">
+              Meeting ID
             </label>
             <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
+              type="text"
+              id="meeting_id"
+              name="meeting_id"
+              value={formData.meeting_id}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              required
+              disabled={loading}
+            />
+          </div>
+          <div>
+            <label htmlFor="meeting_password" className="block text-sm font-medium text-neutral-700 mb-1">
+              Meeting Password
+            </label>
+            <input
+              type="text"
+              id="meeting_password"
+              name="meeting_password"
+              value={formData.meeting_password}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               disabled={loading}
             />
           </div>

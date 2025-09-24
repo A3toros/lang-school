@@ -644,7 +644,7 @@ async function getStudentSchedule(event, user) {
             queryText = `
               SELECT ss.id, s.id as student_id, s.name as student_name, 
                      t.id as teacher_id, t.name as teacher_name,
-                     ss.day_of_week, ss.time_slot, ss.week_start_date,
+                     ss.day_of_week, ss.time_slot, ss.week_start_date::text,
                      ss.attendance_status, ss.lesson_type,
                      CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
                           WHEN ss.attendance_status = 'absent' THEN 'absent'
@@ -662,7 +662,7 @@ async function getStudentSchedule(event, user) {
             queryText = `
               SELECT ss.id, s.id as student_id, s.name as student_name, 
                      t.id as teacher_id, t.name as teacher_name,
-                     ss.day_of_week, ss.time_slot, ss.week_start_date,
+                     ss.day_of_week, ss.time_slot, ss.week_start_date::text,
                      ss.attendance_status, ss.lesson_type,
                      CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
                           WHEN ss.attendance_status = 'absent' THEN 'absent'
@@ -1224,7 +1224,7 @@ async function getStudentMonthlyLessons(event, user) {
       SELECT 
         ws.student_id,
         ws.student_name,
-        ws.week_start_date,
+        ws.week_start_date::text,
         COUNT(CASE WHEN ws.attendance_status = 'completed' THEN 1 END) as completed_lessons,
         COUNT(CASE WHEN ws.attendance_status = 'absent' THEN 1 END) as absent_lessons,
         COUNT(CASE WHEN ws.attendance_status IN ('completed', 'absent') THEN 1 END) as total_lessons

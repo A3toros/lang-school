@@ -6,6 +6,7 @@ import draftManager from '../../utils/draftManager'
 import SaveWarningModal from '../common/SaveWarningModal'
 import StudentSelectionModal from './StudentSelectionModal'
 import SuccessNotification from '../common/SuccessNotification'
+import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
 
 const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   console.log('🔍 [ScheduleTable] Received weekStart prop:', weekStart)
@@ -42,6 +43,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [autofillTimeout, setAutofillTimeout] = useState(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetData, setResetData] = useState(null)
+  const [isResettingLesson, setIsResettingLesson] = useState(false)
+  const [isDeletingReport, setIsDeletingReport] = useState(false)
   
   // Draft mode state
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -587,11 +590,12 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   // Delete report function
   const handleDeleteReport = async () => {
     if (!lessonReportData?.report) {
-      alert('No report to delete')
+      showNotificationMessage('Error', 'No report to delete', 'error')
       return
     }
 
     try {
+      setIsDeletingReport(true)
       const response = await apiService.deleteReport(lessonReportData.report.id)
       
       if (response.success) {
@@ -602,7 +606,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           new Date().toISOString().split('T')[0]
         )
         
-        // Refresh the schedule to show updated status
+        // Component-level refresh - only fetch schedule data
         await fetchSchedule()
         
         // Close the modal
@@ -610,14 +614,16 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
         setLessonReportData(null)
         setShowDeleteConfirm(false)
         
-        alert('Report deleted successfully. Lesson has been reset for the teacher to submit a new report.')
+        showNotificationMessage('Success!', 'Report deleted successfully. Lesson has been reset for the teacher to submit a new report.', 'success')
       } else {
         console.error('Delete report failed:', response.error)
-        alert('Failed to delete report: ' + response.error)
+        showNotificationMessage('Error', 'Failed to delete report: ' + response.error, 'error')
       }
     } catch (err) {
       console.error('Exception deleting report:', err)
-      alert('Error deleting report: ' + err.message)
+      showNotificationMessage('Error', 'Error deleting report: ' + err.message, 'error')
+    } finally {
+      setIsDeletingReport(false)
     }
   }
 
@@ -647,9 +653,14 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   const handleConfirmReset = async () => {
     if (resetData) {
-      await handleResetLesson(resetData)
-      setShowResetConfirm(false)
-      setResetData(null)
+      try {
+        setIsResettingLesson(true)
+        await handleResetLesson(resetData)
+        setShowResetConfirm(false)
+        setResetData(null)
+      } finally {
+        setIsResettingLesson(false)
+      }
     }
   }
 
@@ -912,10 +923,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
   }
 
-  const discardChanges = () => {
+  const discardChanges = async () => {
     draftManager.clearDraftChanges()
     setHasUnsavedChanges(false)
-    fetchSchedule()
+    // Component-level refresh - only fetch schedule data
+    await fetchSchedule()
     console.log('🗑️ [DRAFT] Changes discarded')
   }
 
@@ -1408,80 +1420,59 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
 
       {/* Delete Report Confirmation Modal */}
-      {showDeleteConfirm && lessonReportData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4 text-red-600">
-              Delete Lesson Report
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Are you sure you want to delete this lesson report?
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-yellow-800">
-                <strong>This will:</strong>
-              </p>
-              <ul className="text-sm text-yellow-700 mt-2 list-disc list-inside">
-                <li>Delete the report from the database</li>
-                <li>Reset the lesson status to "Scheduled"</li>
-                <li>Allow the teacher to submit a new report</li>
-                <li>Reset attendance status (absent/completed/warned)</li>
-              </ul>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteReport}
-                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
-              >
-                Delete Report
-              </button>
-            </div>
-          </div>
+      <LoadingSpinnerModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Lesson Report"
+        loading={isDeletingReport}
+        loadingText="Deleting..."
+        confirmText="Delete Report"
+        confirmButtonColor="bg-red-500 hover:bg-red-600"
+        onConfirm={handleDeleteReport}
+      >
+        <p className="text-gray-600 mb-4">
+          Are you sure you want to delete this lesson report?
+        </p>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-yellow-800">
+            <strong>This will:</strong>
+          </p>
+          <ul className="text-sm text-yellow-700 mt-2 list-disc list-inside">
+            <li>Delete the report from the database</li>
+            <li>Reset the lesson status to "Scheduled"</li>
+            <li>Allow the teacher to submit a new report</li>
+            <li>Reset attendance status </li>
+          </ul>
         </div>
-      )}
+      </LoadingSpinnerModal>
 
       {/* Reset Lesson Confirmation Modal */}
-      {showResetConfirm && resetData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4 text-blue-600">
-              Reset Lesson
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Are you sure you want to reset this lesson to "Scheduled"?
-            </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-blue-800">
-                <strong>This will:</strong>
-              </p>
-              <ul className="text-sm text-blue-700 mt-2 list-disc list-inside">
-                <li>Reset the lesson status to "Scheduled"</li>
-                <li>Allow the teacher to mark attendance again</li>
-              </ul>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmReset}
-                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
-              >
-                Reset Lesson
-              </button>
-            </div>
-          </div>
+      <LoadingSpinnerModal
+        isOpen={showResetConfirm}
+        onClose={() => {
+          setShowResetConfirm(false)
+          setResetData(null)
+        }}
+        title="Reset Lesson"
+        loading={isResettingLesson}
+        loadingText="Resetting..."
+        confirmText="Reset Lesson"
+        confirmButtonColor="bg-blue-500 hover:bg-blue-600"
+        onConfirm={handleConfirmReset}
+      >
+        <p className="text-gray-600 mb-4">
+          Are you sure you want to reset this lesson to "Scheduled"?
+        </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-blue-800">
+            <strong>This will:</strong>
+          </p>
+          <ul className="text-sm text-blue-700 mt-2 list-disc list-inside">
+            <li>Reset the lesson status to "Scheduled"</li>
+            <li>Allow the teacher to mark attendance again</li>
+          </ul>
         </div>
-      )}
+      </LoadingSpinnerModal>
 
       {/* Future Lesson Deletion Modal */}
       {showFutureLessonConfirm && futureLessonData && (

@@ -70,7 +70,7 @@ async function getAttendance(event, user) {
         SELECT 
           ss.id, s.id as student_id, s.name as student_name, 
           t.id as teacher_id, t.name as teacher_name,
-          ss.day_of_week, ss.time_slot, ss.week_start_date,
+          ss.day_of_week, ss.time_slot, ss.week_start_date::text,
           ss.attendance_status, ss.lesson_type,
           CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
                WHEN ss.attendance_status = 'absent' THEN 'absent'

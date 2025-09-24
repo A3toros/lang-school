@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import apiService from '../utils/api'
 import { getCurrentWeekStart, getWeekEnd, getWeekStart, getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo } from '../utils/dateUtils'
 import FileLibrary from '../components/teacher/FileLibrary'
+import LoadingSpinnerModal from '../components/common/LoadingSpinnerModal'
 
 const TeacherPage = () => {
   const { user, logout } = useAuth()
@@ -31,6 +32,8 @@ const TeacherPage = () => {
   const [showReportViewModal, setShowReportViewModal] = useState(false)
   const [recentReports, setRecentReports] = useState([])
   const [activeTab, setActiveTab] = useState('schedule')
+  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false)
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false)
 
   useEffect(() => {
     console.log('🔍 [TEACHER_PAGE] useEffect triggered with user:', user)
@@ -206,9 +209,18 @@ const TeacherPage = () => {
 
   const confirmMarkAttendance = async () => {
     if (pendingAttendance) {
-      await handleMarkAttendance(pendingAttendance.scheduleId, pendingAttendance.status)
-      setShowAttendanceConfirmModal(false)
-      setPendingAttendance(null)
+      try {
+        setIsMarkingAttendance(true)
+        await handleMarkAttendance(pendingAttendance.scheduleId, pendingAttendance.status)
+        
+        // Refresh only the schedule data (component-level refresh)
+        await fetchSchedule()
+        
+        setShowAttendanceConfirmModal(false)
+        setPendingAttendance(null)
+      } finally {
+        setIsMarkingAttendance(false)
+      }
     }
   }
 
@@ -275,6 +287,7 @@ const TeacherPage = () => {
 
   const confirmSubmitReport = async () => {
     try {
+      setIsSubmittingReport(true)
       // First, mark the lesson as completed
       const scheduleItem = schedule.find(s => 
         s.student_id === pendingReport.student_id && 
@@ -321,8 +334,8 @@ const TeacherPage = () => {
           })
         }, 2000)
         
-        // Refresh the schedule to show updated status
-        fetchSchedule()
+        // Refresh only the schedule data (component-level refresh)
+        await fetchSchedule()
         
         setShowReportModal(false)
         setShowConfirmModal(false)
@@ -362,6 +375,8 @@ const TeacherPage = () => {
     } catch (error) {
       console.error('Error submitting report:', error)
       alert('Failed to submit report')
+    } finally {
+      setIsSubmittingReport(false)
     }
   }
 
@@ -1007,93 +1022,53 @@ const TeacherPage = () => {
         )}
 
         {/* Confirmation Modal */}
-        {showConfirmModal && pendingReport && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-lg p-6 w-96 max-w-full mx-4"
-            >
-              <h3 className="text-lg font-semibold mb-4 text-green-600">
-                Confirm Lesson Completion
-              </h3>
-              <div className="space-y-4">
-                <p className="text-gray-700">
-                  Are you sure you want to complete this lesson and submit the report? This will mark the lesson as completed and save the report.
-                </p>
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p><strong>Student:</strong> {selectedStudent?.name}</p>
-                  <p><strong>Time Slot:</strong> {pendingReport.time_slot}</p>
-                  <p><strong>Date:</strong> {pendingReport.lesson_date}</p>
-                  <p><strong>Comment:</strong> {pendingReport.comment}</p>
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => {
-                      setShowConfirmModal(false)
-                      setPendingReport(null)
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmSubmitReport}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    Complete Lesson
-                  </button>
-                </div>
-              </div>
-            </motion.div>
+        <LoadingSpinnerModal
+          isOpen={showConfirmModal}
+          onClose={() => {
+            setShowConfirmModal(false)
+            setPendingReport(null)
+          }}
+          title="Confirm Lesson Completion"
+          loading={isSubmittingReport}
+          loadingText="Submitting..."
+          confirmText="Complete Lesson"
+          confirmButtonColor="bg-green-600 hover:bg-green-700"
+          onConfirm={confirmSubmitReport}
+        >
+          <p className="text-gray-700">
+            Are you sure you want to complete this lesson and submit the report? This will mark the lesson as completed and save the report.
+          </p>
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p><strong>Student:</strong> {selectedStudent?.name}</p>
+            <p><strong>Time Slot:</strong> {pendingReport?.time_slot}</p>
+            <p><strong>Date:</strong> {pendingReport?.lesson_date}</p>
+            <p><strong>Comment:</strong> {pendingReport?.comment}</p>
           </div>
-        )}
+        </LoadingSpinnerModal>
 
         {/* Attendance Confirmation Modal */}
         {console.log('🔍 [MODAL_RENDER] showAttendanceConfirmModal:', showAttendanceConfirmModal, 'pendingAttendance:', pendingAttendance)}
-        {showAttendanceConfirmModal && pendingAttendance && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-lg p-6 w-96 max-w-full mx-4"
-            >
-              <h3 className="text-lg font-semibold mb-4 text-red-600">
-                Confirm Attendance Marking
-              </h3>
-              <div className="space-y-4">
-                <p className="text-gray-700">
-                  Are you sure you want to mark this lesson as <strong>{pendingAttendance.status === 'absent' ? 'U' : pendingAttendance.status === 'absent_warned' ? 'UI' : pendingAttendance.status.replace('_', ' ').toUpperCase()}</strong>?
-                </p>
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <p><strong>Student:</strong> {pendingAttendance.studentName}</p>
-                  <p><strong>Status:</strong> {pendingAttendance.status === 'absent' ? 'U' : pendingAttendance.status === 'absent_warned' ? 'UI' : pendingAttendance.status.replace('_', ' ').toUpperCase()}</p>
-                </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => {
-                      setShowAttendanceConfirmModal(false)
-                      setPendingAttendance(null)
-                    }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmMarkAttendance}
-                    className={`flex-1 px-4 py-2 text-white rounded-lg ${
-                      pendingAttendance.status === 'absent' 
-                        ? 'bg-red-600 hover:bg-red-700'
-                        : 'bg-yellow-600 hover:bg-yellow-700'
-                    }`}
-                  >
-                    Mark as {pendingAttendance.status === 'absent' ? 'U' : pendingAttendance.status === 'absent_warned' ? 'UI' : pendingAttendance.status.replace('_', ' ').toUpperCase()}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
+        <LoadingSpinnerModal
+          isOpen={showAttendanceConfirmModal}
+          onClose={() => {
+            setShowAttendanceConfirmModal(false)
+            setPendingAttendance(null)
+          }}
+          title="Confirm Attendance Marking"
+          loading={isMarkingAttendance}
+          loadingText="Marking..."
+          confirmText={`Mark as ${pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}`}
+          confirmButtonColor={pendingAttendance?.status === 'absent' ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'}
+          onConfirm={confirmMarkAttendance}
+        >
+          <p className="text-gray-700">
+            Are you sure you want to mark this lesson as <strong>{pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</strong>?
+          </p>
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <p><strong>Student:</strong> {pendingAttendance?.studentName}</p>
+            <p><strong>Status:</strong> {pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</p>
           </div>
-        )}
+        </LoadingSpinnerModal>
 
         {/* Report View Modal */}
         {showReportViewModal && selectedReport && (
