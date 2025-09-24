@@ -255,21 +255,21 @@ const TeachersTable = () => {
         <h3 className="text-lg sm:text-xl font-semibold text-neutral-800 mb-4">Teachers Overview</h3>
         
         {/* Month Navigation and Week Selector - Below title, left aligned */}
-        <div className="flex items-center justify-start space-x-4">
+        <div className="flex items-center justify-start space-x-2 sm:space-x-4">
           {/* Month Navigation */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             <button
               onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1))}
-              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+              className="px-2 py-1 sm:px-3 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
             >
               ←
             </button>
-            <h3 className="text-lg font-semibold text-gray-800">
+            <h3 className="text-sm sm:text-lg font-semibold text-gray-800">
               {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h3>
             <button
               onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1))}
-              className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+              className="px-2 py-1 sm:px-3 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
             >
               →
             </button>
@@ -279,7 +279,7 @@ const TeachersTable = () => {
           <div className="relative">
             <button
               onClick={() => setShowWeekDropdown(!showWeekDropdown)}
-              className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              className="px-2 py-1 sm:px-3 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs sm:text-sm"
             >
               {selectedWeek ? selectedWeek.label : 'All Weeks'}
             </button>
@@ -324,15 +324,22 @@ const TeachersTable = () => {
 
       {/* Teachers Table */}
       <div className="w-full">
-        <table className="w-full table-fixed">
-          <thead>
-            <tr className="border-b border-neutral-200">
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-sm text-neutral-700">Teacher</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-sm text-neutral-700 hidden sm:table-cell">Students</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-sm text-neutral-700 hidden md:table-cell">Lessons</th>
-              <th className="text-left py-1 sm:py-2 px-1 sm:px-2 font-semibold text-2xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Actions</th>
-            </tr>
-          </thead>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[320px]">
+            <thead>
+              <tr className="border-b border-neutral-200">
+                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Teacher</th>
+                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/4">
+                  <span className="sm:hidden">s</span>
+                  <span className="hidden sm:inline">Students</span>
+                </th>
+                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/6">
+                  <span className="sm:hidden">l</span>
+                  <span className="hidden sm:inline">Lessons</span>
+                </th>
+                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Actions</th>
+              </tr>
+            </thead>
           <tbody>
             {teachers.map((teacher) => {
               const stats = teacherStats[teacher.id]
@@ -347,34 +354,33 @@ const TeachersTable = () => {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="py-1 sm:py-2 px-1 sm:px-2">
-                    <span className="text-2xs sm:text-sm font-medium text-neutral-800">
+                  <td className="py-1 px-2">
+                    <span className="text-xs font-medium text-neutral-800 truncate">
                       {teacher.name}
                     </span>
                   </td>
                   
-                  <td className="py-1 sm:py-2 px-1 sm:px-2 hidden sm:table-cell">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-2xs sm:text-sm font-medium bg-primary-100 text-primary-800">
-                      {teacher.student_count || 0} students
+                  <td className="py-1 px-2">
+                    <span className="text-xs font-medium text-neutral-600">
+                      {teacher.student_count || 0}
                     </span>
                   </td>
                   
-                  <td className="py-1 sm:py-2 px-1 sm:px-2 hidden md:table-cell">
-                    <span className="text-2xs sm:text-sm font-medium text-neutral-800">
+                  <td className="py-1 px-2">
+                    <span className="text-xs font-medium text-neutral-600">
                       {getLessonCount(teacher.id)}
                     </span>
                   </td>
                   
-                  
-                  <td className="py-1 sm:py-2 px-1 sm:px-2">
+                  <td className="py-2 px-2">
                     <button
                       onClick={() => toggleTeacher(teacher.id)}
-                      className="inline-flex items-center px-1 sm:px-2 py-0.5 sm:py-1 border border-neutral-300 rounded-md text-2xs sm:text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="inline-flex items-center px-0.5 py-0.5 sm:px-1.5 border border-neutral-300 rounded text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-primary-500 w-auto sm:w-auto justify-center sm:justify-start"
                     >
                       <span className="hidden sm:inline">{isExpanded ? 'Hide Students' : 'Show Students'}</span>
                       <span className="sm:hidden">{isExpanded ? 'Hide' : 'Show'}</span>
                       <motion.svg
-                        className="ml-2 w-4 h-4"
+                        className="ml-0.5 sm:ml-1 w-2.5 h-2.5 sm:w-3 sm:h-3"
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                         transition={{ duration: 0.2 }}
                         fill="none"
@@ -389,7 +395,8 @@ const TeachersTable = () => {
               )
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {/* Expanded Student Details */}
@@ -409,39 +416,39 @@ const TeachersTable = () => {
               transition={{ duration: 0.3 }}
               className="border-t border-neutral-200 bg-neutral-50"
             >
-              <div className="p-6">
-                <h4 className="text-lg font-semibold text-neutral-800 mb-4">
+              <div className="p-3 sm:p-6">
+                <h4 className="text-base sm:text-lg font-semibold text-neutral-800 mb-3 sm:mb-4">
                   Students for {teacher.name}
                 </h4>
                 
                 {students.length === 0 ? (
-                  <div className="text-center py-8 text-neutral-500">
-                    <div className="mb-4">
-                      <svg className="w-16 h-16 mx-auto text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="text-center py-6 sm:py-8 text-neutral-500">
+                    <div className="mb-3 sm:mb-4">
+                      <svg className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                       </svg>
                     </div>
-                    <p>No students assigned to this teacher</p>
+                    <p className="text-sm sm:text-base">No students assigned to this teacher</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     {students.map((student) => (
                       <motion.div
                         key={student.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="bg-white rounded-lg border border-neutral-200 p-4 hover:shadow-md transition-shadow"
+                        className="bg-white rounded-lg border border-neutral-200 p-3 sm:p-4 hover:shadow-md transition-shadow"
                       >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 rounded-full bg-secondary-100 flex items-center justify-center">
+                        <div className="flex items-center space-x-2 sm:space-x-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-secondary-100 flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-semibold text-secondary-700">
                               {student.name.split(' ').map(n => n[0]).join('')}
                             </span>
                           </div>
-                          <div className="flex-1">
-                            <div className="font-medium text-neutral-800">{student.name}</div>
-                            <div className="text-sm text-neutral-500">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-neutral-800 text-sm sm:text-base truncate">{student.name}</div>
+                            <div className="text-xs sm:text-sm text-neutral-500">
                               {student.lessons_per_week} lessons/week (auto)
                             </div>
                             <div className="text-xs text-neutral-400">

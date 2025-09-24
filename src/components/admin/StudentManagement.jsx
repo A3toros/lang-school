@@ -743,11 +743,12 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden sm:table-cell"
+                className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none w-1/6 sm:w-auto"
                 onClick={() => handleSort('teacher_name')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Teacher</span>
+                  <span className="sm:hidden">T</span>
+                  <span className="hidden sm:inline">Teacher</span>
                   {sortConfig.key === 'teacher_name' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -755,8 +756,9 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   )}
                 </div>
               </th>
-              <th className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                <span>Total Lessons</span>
+              <th className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider w-1/6 sm:w-auto">
+                <span className="sm:hidden">L</span>
+                <span className="hidden sm:inline">Total Lessons</span>
               </th>
               <th 
                 className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden xl:table-cell"
@@ -772,11 +774,12 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 </div>
               </th>
               <th 
-                className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none hidden lg:table-cell"
+                className="px-2 sm:px-3 py-2 sm:py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none w-1/6 sm:w-auto"
                 onClick={() => handleSort('is_active')}
               >
                 <div className="flex items-center space-x-1">
-                  <span>Status</span>
+                  <span className="sm:hidden">A</span>
+                  <span className="hidden sm:inline">Status</span>
                   {sortConfig.key === 'is_active' && (
                     <span className="text-primary-500">
                       {sortConfig.direction === 'asc' ? '↑' : '↓'}
@@ -812,42 +815,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   whileHover={{ scale: 1.01 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 text-sm sm:text-base font-medium text-gray-900">
-                    <div className="min-w-0">
-                      <div className="truncate">{student.name}</div>
-                      {/* Mobile: Show key info inline */}
-                      <div className="sm:hidden mt-1 space-y-1">
-                        <div className="text-xs text-gray-500">
-                          Teacher: {student.is_active ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openTeacherModal(student)
-                              }}
-                              className="text-blue-600 hover:text-blue-800 text-xs px-1 py-0.5 rounded hover:bg-blue-50"
-                            >
-                              Teachers
-                            </button>
-                          ) : (
-                            <span className="text-gray-400">Unassigned</span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {getLessonCount(student.id)} lessons
-                          </span>
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            student.is_active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {student.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base font-medium text-gray-900">
+                    <div className="truncate">{student.name}</div>
                   </td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500 hidden sm:table-cell">
+                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
                     {student.is_active ? (
                       <button
                         onClick={(e) => {
@@ -856,28 +827,30 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                         }}
                         className="text-blue-600 hover:text-blue-800 text-xs px-1 py-0.5 rounded hover:bg-blue-50"
                       >
-                        Teachers
+                        <span className="sm:hidden">T</span>
+                        <span className="hidden sm:inline">Teachers</span>
                       </button>
                     ) : (
-                      <span className="text-gray-400">Unassigned</span>
+                      <span className="text-gray-400 text-xs">-</span>
                     )}
                   </td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500 hidden lg:table-cell">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs sm:text-sm font-medium bg-blue-100 text-blue-800">
+                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
+                    <span className="text-xs sm:text-sm font-medium text-gray-600">
                       {getLessonCount(student.id)}
                     </span>
                   </td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500 hidden xl:table-cell">
+                  <td className="px-4 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500 hidden xl:table-cell">
                     {new Date(student.added_date).toLocaleDateString()}
                   </td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 hidden lg:table-cell">
-                    <div className="flex items-center space-x-2">
-                      <span className={`inline-flex px-2 py-1 text-xs sm:text-sm font-semibold rounded-full ${
+                  <td className="px-4 sm:px-3 py-1 sm:py-3">
+                    <div className="flex items-center space-x-4 sm:space-x-2">
+                      <span className={`inline-flex px-1 py-0.5 sm:px-2 sm:py-1 text-xs sm:text-sm font-semibold rounded-full ${
                         student.is_active 
                           ? 'bg-green-100 text-green-800' 
                           : 'bg-red-100 text-red-800'
                       }`}>
-                        {student.is_active ? 'Active' : 'Inactive'}
+                        <span className="sm:hidden">{student.is_active ? 'A' : 'I'}</span>
+                        <span className="hidden sm:inline">{student.is_active ? 'Active' : 'Inactive'}</span>
                       </span>
                       <button
                         type="button"
@@ -891,12 +864,9 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                             : 'text-green-600 hover:text-green-800 hover:bg-green-50'
                         }`}
                       >
-                        {student.is_active ? 'Deactivate' : 'Reactivate'}
+                        <span className="sm:hidden">{student.is_active ? 'Deac' : 'React'}</span>
+                        <span className="hidden sm:inline">{student.is_active ? 'Deactivate' : 'Reactivate'}</span>
                       </button>
-                    </div>
-                  </td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500">
-                    <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                       {student.is_active && (
                         <button
                           type="button"
@@ -907,10 +877,14 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                           }}
                           className="text-red-600 hover:text-red-800 text-xs px-1 py-0.5 rounded hover:bg-red-50"
                         >
-                          Delete
+                          <span className="sm:hidden">Del</span>
+                          <span className="hidden sm:inline">Delete</span>
                         </button>
                       )}
                     </div>
+                  </td>
+                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
+                    {/* Actions column - now empty on mobile, can be used for other actions on desktop */}
                   </td>
                 </motion.tr>
               ))
