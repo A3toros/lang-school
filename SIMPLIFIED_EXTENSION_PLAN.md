@@ -237,7 +237,7 @@ async checkExtensionReminder() {
 }
 ```
 
-### 7. **Integration in ScheduleTable**
+### 7. **Integration in ScheduleTable with Icon Button**
 ```jsx
 // src/components/admin/ScheduleTable.jsx
 import ExtensionReminder from './ExtensionReminder'
@@ -269,8 +269,104 @@ const handleExtendSchedules = async () => {
   }
 }
 
-// In JSX, add at the top:
+// In JSX, add ExtensionReminder at the top:
 <ExtensionReminder onExtendSchedules={handleExtendSchedules} />
+
+// In the header section, add icon button to the right of "Weekly Schedule" and week navigation:
+<div className="flex items-center justify-between mb-4">
+  <div className="flex items-center space-x-4">
+    <h2 className="text-xl font-semibold">Weekly Schedule</h2>
+    <div className="flex items-center space-x-2">
+      <button 
+        onClick={() => handleWeekChange(getPreviousWeek(selectedWeek))}
+        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        disabled={isLoading}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <span className="text-sm font-medium min-w-[120px] text-center">
+        {formatWeekDisplay(selectedWeek)}
+      </span>
+      <button 
+        onClick={() => handleWeekChange(getNextWeek(selectedWeek))}
+        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        disabled={isLoading}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  </div>
+  
+  {/* Extend Schedule Icon Button */}
+  <button
+    onClick={handleExtendSchedules}
+    disabled={isExtending}
+    className="flex items-center justify-center p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded-lg transition-colors group relative"
+    title="Extend all schedules by one week"
+  >
+    {isExtending ? (
+      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+    ) : (
+      <img 
+        src="/extend-schedule.png" 
+        alt="Extend Schedule" 
+        className="w-5 h-5 group-hover:scale-110 transition-transform"
+      />
+    )}
+  </button>
+</div>
+
+// Mobile optimization - responsive layout:
+<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 space-y-2 sm:space-y-0">
+  <div className="flex items-center space-x-2 sm:space-x-4">
+    <h2 className="text-lg sm:text-xl font-semibold">Weekly Schedule</h2>
+    <div className="flex items-center space-x-1 sm:space-x-2">
+      <button 
+        onClick={() => handleWeekChange(getPreviousWeek(selectedWeek))}
+        className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        disabled={isLoading}
+      >
+        <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <span className="text-xs sm:text-sm font-medium min-w-[100px] sm:min-w-[120px] text-center">
+        {formatWeekDisplay(selectedWeek)}
+      </span>
+      <button 
+        onClick={() => handleWeekChange(getNextWeek(selectedWeek))}
+        className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        disabled={isLoading}
+      >
+        <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  </div>
+  
+  {/* Extend Schedule Icon Button - Mobile Optimized */}
+  <button
+    onClick={handleExtendSchedules}
+    disabled={isExtending}
+    className="flex items-center justify-center p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded-lg transition-colors group relative self-end sm:self-auto"
+    title="Extend all schedules by one week"
+  >
+    {isExtending ? (
+      <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+    ) : (
+      <img 
+        src="/extend-schedule.png" 
+        alt="Extend Schedule" 
+        className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform"
+      />
+    )}
+  </button>
+</div>
 ```
 
 ## What's Simplified vs Original Plan
@@ -306,11 +402,38 @@ const handleExtendSchedules = async () => {
 4. **Clear**: Simple yellow alert when needed
 5. **Flexible**: Easy to add features later if needed
 
+## Performance Optimization
+
+### **Database Indexing (Critical for Large Datasets)**
+```sql
+-- Composite index for COUNT(DISTINCT ...) performance
+CREATE INDEX IF NOT EXISTS idx_schedule_extension_performance 
+ON student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date);
+
+-- Additional indexes for template joins
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_active 
+ON schedule_templates (is_active);
+
+CREATE INDEX IF NOT EXISTS idx_student_schedules_active_week 
+ON student_schedules (is_active, week_start_date);
+```
+
+**Why this matters:**
+- `COUNT(DISTINCT student_id, teacher_id, day_of_week, time_slot)` can be expensive on large datasets
+- Composite index on the exact columns used in DISTINCT clause
+- Template join optimization for `tpl.is_active = TRUE`
+- Week filtering optimization for `week_start_date >= get_current_week_start()`
+
+**Performance Impact:**
+- **Without index**: O(n) scan of all schedules
+- **With index**: O(log n) index lookup + much faster DISTINCT operation
+- **Critical for**: 10,000+ schedules (tens of thousands)
+
 ## Total Implementation
-- **Database**: 2 functions (~30 lines)
+- **Database**: 2 functions + 3 indexes (~40 lines)
 - **Backend**: 2 API endpoints (~40 lines)
 - **Frontend**: 1 component (~80 lines)
 - **Integration**: ~20 lines
-- **Total**: ~170 lines vs 500+ in original plan
+- **Total**: ~180 lines vs 500+ in original plan
 
 This keeps ALL the core functionality while removing the overengineering! 🎉

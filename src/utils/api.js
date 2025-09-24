@@ -2078,6 +2078,19 @@ class ApiService {
     }
   }
 
+  // Schedule extension methods
+  async extendSchedules() {
+    return this.makeRequest('/schedules/extend', {
+      method: 'POST'
+    })
+  }
+
+  async checkExtensionReminder() {
+    return this.makeRequest('/schedules/extension-reminder', {
+      method: 'POST'
+    })
+  }
+
 }
 
 // Create and export a singleton instance

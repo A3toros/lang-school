@@ -59,13 +59,22 @@ CREATE OR REPLACE FUNCTION count_schedules_needing_extension()
 RETURNS INT AS $$
 BEGIN
   RETURN (
-    SELECT COUNT(DISTINCT ss.student_id, ss.teacher_id, ss.day_of_week, ss.time_slot)
-    FROM student_schedules ss
-    JOIN schedule_templates tpl ON ss.template_id = tpl.id
-    WHERE tpl.is_active = TRUE
-      AND ss.is_active = TRUE
-      AND ss.week_start_date >= get_current_week_start()
-      AND (ss.week_start_date - get_current_week_start()) / 7 <= 2
+    SELECT COUNT(*)
+    FROM (
+      SELECT DISTINCT 
+        ss.student_id, 
+        ss.teacher_id, 
+        ss.day_of_week, 
+        ss.time_slot,
+        MAX(ss.week_start_date) as last_week_date
+      FROM student_schedules ss
+      JOIN schedule_templates tpl ON ss.template_id = tpl.id
+      WHERE tpl.is_active = TRUE
+        AND ss.is_active = TRUE
+        AND ss.week_start_date >= get_current_week_start()
+      GROUP BY ss.student_id, ss.teacher_id, ss.day_of_week, ss.time_slot
+      HAVING (MAX(ss.week_start_date) - get_current_week_start()) / 7 <= 2
+    ) AS schedules_needing_extension
   );
 END;
 $$ LANGUAGE plpgsql;
@@ -215,7 +224,23 @@ $$ LANGUAGE plpgsql;
 -- SELECT get_current_week_start();
 
 -- =====================================================
--- 7. COMMENTS AND DOCUMENTATION
+-- 7. PERFORMANCE INDEXES (Critical for Large Datasets)
+-- =====================================================
+
+-- Composite index for COUNT(DISTINCT ...) performance
+-- This is CRITICAL for performance with 10,000+ schedules
+CREATE INDEX IF NOT EXISTS idx_schedule_extension_performance 
+ON student_schedules (student_id, teacher_id, day_of_week, time_slot, week_start_date);
+
+-- Additional indexes for template joins and filtering
+CREATE INDEX IF NOT EXISTS idx_schedule_templates_active 
+ON schedule_templates (is_active);
+
+CREATE INDEX IF NOT EXISTS idx_student_schedules_active_week 
+ON student_schedules (is_active, week_start_date);
+
+-- =====================================================
+-- 8. COMMENTS AND DOCUMENTATION
 -- =====================================================
 
 COMMENT ON FUNCTION extend_schedules_by_one_week() IS 'Extends all active schedule templates by adding one week after the last existing week for each unique pattern';
@@ -224,3 +249,7 @@ COMMENT ON FUNCTION get_current_week_start() IS 'Returns the Monday date of the 
 COMMENT ON FUNCTION get_week_start(DATE) IS 'Returns the Monday date of the week containing the input date';
 COMMENT ON FUNCTION test_extension_candidates() IS 'Shows what schedules would be extended without actually extending them (for testing)';
 COMMENT ON FUNCTION get_extension_reminder_details() IS 'Returns detailed information about schedules needing extension (for debugging)';
+
+COMMENT ON INDEX idx_schedule_extension_performance IS 'Critical performance index for COUNT(DISTINCT ...) operations on large datasets';
+COMMENT ON INDEX idx_schedule_templates_active IS 'Optimizes template join filtering by is_active status';
+COMMENT ON INDEX idx_student_schedules_active_week IS 'Optimizes schedule filtering by is_active and week_start_date';

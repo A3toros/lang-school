@@ -7,6 +7,7 @@ import SaveWarningModal from '../common/SaveWarningModal'
 import StudentSelectionModal from './StudentSelectionModal'
 import SuccessNotification from '../common/SuccessNotification'
 import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
+import ExtensionReminder from './ExtensionReminder'
 
 const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   console.log('🔍 [ScheduleTable] Received weekStart prop:', weekStart)
@@ -45,6 +46,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [resetData, setResetData] = useState(null)
   const [isResettingLesson, setIsResettingLesson] = useState(false)
   const [isDeletingReport, setIsDeletingReport] = useState(false)
+  const [isExtending, setIsExtending] = useState(false)
+  const [showExtendConfirm, setShowExtendConfirm] = useState(false)
   
   // Draft mode state
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -646,6 +649,34 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
   }
 
+  // Extend schedules function
+  const handleExtendSchedules = async () => {
+    try {
+      setIsExtending(true)
+      const response = await apiService.extendSchedules()
+      
+      if (response.success) {
+        showNotificationMessage('Success!', `Extended ${response.count} schedule templates by one week.`, 'success')
+        // Refresh the schedule to show new weeks
+        await fetchSchedule()
+      } else {
+        console.error('Failed to extend schedules:', response.error)
+        showNotificationMessage('Error', 'Failed to extend schedules: ' + (response.error || 'Unknown error'), 'error')
+      }
+    } catch (error) {
+      console.error('Error extending schedules:', error)
+      showNotificationMessage('Error', 'Error extending schedules: ' + error.message, 'error')
+    } finally {
+      setIsExtending(false)
+      setShowExtendConfirm(false)
+    }
+  }
+
+  // Show extend confirmation
+  const showExtendConfirmation = () => {
+    setShowExtendConfirm(true)
+  }
+
   const confirmResetLesson = (student) => {
     setResetData(student)
     setShowResetConfirm(true)
@@ -1013,16 +1044,22 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-neutral-200">
+      {/* Extension Reminder */}
+      <ExtensionReminder onExtendSchedules={handleExtendSchedules} />
+      
       {/* Header */}
       <div className="p-4 border-b border-neutral-200">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <h3 className="text-lg font-semibold text-neutral-800">Weekly Schedule</h3>
-            
-            {/* Week Navigation */}
-            {onWeekChange && (
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
+            <h2 className="text-xs sm:text-lg font-semibold whitespace-nowrap">
+              <span className="sm:hidden">Schedule</span>
+              <span className="hidden sm:inline">Weekly Schedule</span>
+            </h2>
+            <div className="flex items-center gap-1">
+              {/* Week Navigation */}
+              {onWeekChange && (
               <motion.div 
-                className="flex items-center space-x-2"
+                className="flex items-center gap-1"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3 }}
@@ -1091,32 +1128,67 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                 </motion.button>
               </motion.div>
             )}
+              
+              {/* Extend Schedule Icon Button - Mobile Optimized */}
+              <button
+                onClick={showExtendConfirmation}
+                disabled={isExtending}
+                className="flex items-center justify-center p-1.5 sm:p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white rounded transition-colors group relative ml-2 sm:ml-4"
+                title="Extend all schedules by one week"
+              >
+                {isExtending ? (
+                  <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <img 
+                    src="/pics/extend-schedule.png" 
+                    alt="Extend Schedule" 
+                    className="w-3 h-3 sm:w-4 sm:h-4 group-hover:scale-110 transition-transform"
+                  />
+                )}
+              </button>
+            </div>
           </div>
           
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <span className="text-xs sm:text-sm font-medium text-neutral-700">Read Mode</span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 flex-shrink-0 pt-1 sm:pt-0">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <span className="text-xs font-medium text-neutral-700 whitespace-nowrap">
+                <span className="sm:hidden">Read</span>
+                <span className="hidden sm:inline">Read Mode</span>
+              </span>
               <button
                 onClick={() => setEditMode(!editMode)}
-                className={`relative inline-flex h-7 w-14 sm:h-6 sm:w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                className={`relative inline-flex h-5 w-10 sm:h-6 sm:w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
                   editMode ? 'bg-primary-500' : 'bg-neutral-300'
                 }`}
               >
                 <span
-                  className={`inline-block h-5 w-5 sm:h-4 sm:w-4 transform rounded-full bg-white transition-transform duration-200 ${
-                    editMode ? 'translate-x-8 sm:translate-x-6' : 'translate-x-1'
+                  className={`inline-block h-3 w-3 sm:h-4 sm:w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                    editMode ? 'translate-x-6 sm:translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
-              <span className="text-xs sm:text-sm font-medium text-neutral-700">Edit Mode</span>
+              <span className="text-xs font-medium text-neutral-700 whitespace-nowrap">
+                <span className="sm:hidden">Edit</span>
+                <span className="hidden sm:inline">Edit Mode</span>
+              </span>
             </div>
               {editMode && (
                 <button 
-                  className="btn-primary text-sm"
+                  className="btn-primary text-xs sm:text-sm px-2 sm:px-4 py-1 sm:py-2 w-full sm:w-auto"
                   onClick={saveChangesToDatabase}
                   disabled={isSaving}
                 >
-                  {isSaving ? 'Saving...' : 'Save Changes'}
+                  {isSaving ? (
+                    <div className="flex items-center justify-center space-x-1 sm:space-x-2">
+                      <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs sm:text-sm">Saving...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="sm:hidden">Save</span>
+                      <span className="hidden sm:inline">Save Changes</span>
+                    </>
+                  )}
                 </button>
               )}
           </div>
@@ -1470,6 +1542,30 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           <ul className="text-sm text-blue-700 mt-2 list-disc list-inside">
             <li>Reset the lesson status to "Scheduled"</li>
             <li>Allow the teacher to mark attendance again</li>
+          </ul>
+        </div>
+      </LoadingSpinnerModal>
+
+      {/* Extend Schedules Confirmation Modal */}
+      <LoadingSpinnerModal
+        isOpen={showExtendConfirm}
+        onClose={() => setShowExtendConfirm(false)}
+        title="Extend All Schedules"
+        loading={isExtending}
+        loadingText="Extending..."
+        confirmText="Extend Schedules"
+        confirmButtonColor="bg-blue-500 hover:bg-blue-600"
+        onConfirm={handleExtendSchedules}
+      >
+        <p className="text-gray-600 mb-4">
+          Are you sure you want to extend all schedules by 1 week?
+        </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-800 font-medium mb-2">This will:</p>
+          <ul className="text-sm text-blue-700 list-disc list-inside">
+            <li>Add one new week after the last scheduled week for each active schedule pattern</li>
+            <li>Extend all active student/teacher/day/time combinations</li>
+            <li>Create new schedule entries with "scheduled" status</li>
           </ul>
         </div>
       </LoadingSpinnerModal>

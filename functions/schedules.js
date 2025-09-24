@@ -53,6 +53,10 @@ exports.handler = async (event, context) => {
       return await discardChanges(event, user)
     } else if (path === '/api/schedules/available-slots' && method === 'GET') {
       return await getAvailableSlots(event, user)
+    } else if (path === '/api/schedules/extend' && method === 'POST') {
+      return await extendSchedules(event, user)
+    } else if (path === '/api/schedules/extension-reminder' && method === 'POST') {
+      return await checkExtensionReminder(event, user)
     } else if (path === '/api/schedules/reassign-student' && method === 'POST') {
       return await reassignStudent(event, user)
     } else if (path.match(/^\/api\/schedules\/\d+\/attendance$/) && method === 'POST') {
@@ -1375,5 +1379,72 @@ async function createScheduleTemplate(event, user) {
   } catch (error) {
     console.error('Create schedule template error:', error)
     return errorResponse(500, 'Failed to create schedule template')
+  }
+}
+
+// Extend all schedules by one week
+async function extendSchedules(event, user) {
+  let client
+  try {
+    console.log('🔍 [EXTEND_SCHEDULES] Starting extension for user:', user.role)
+    
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Forbidden')
+    }
+    
+    client = await getPool().connect()
+    console.log('🔍 [EXTEND_SCHEDULES] Database connected, executing extension')
+    
+    // Single database call - returns count only
+    const result = await client.query('SELECT extend_schedules_by_one_week() as count')
+    const count = result.rows[0].count
+    
+    console.log(`✅ [EXTEND_SCHEDULES] Extended ${count} schedule templates`)
+    
+    return successResponse({ 
+      success: true, 
+      count,
+      message: `Successfully extended ${count} schedule templates by one week`
+    })
+    
+  } catch (error) {
+    console.error('❌ [EXTEND_SCHEDULES] Error:', error)
+    console.error('❌ [EXTEND_SCHEDULES] Error details:', error.message)
+    return errorResponse(500, 'Failed to extend schedules: ' + error.message)
+  } finally {
+    if (client) client.release()
+  }
+}
+
+// Check extension reminder (once per day)
+async function checkExtensionReminder(event, user) {
+  let client
+  try {
+    console.log('🔍 [CHECK_EXTENSION_REMINDER] Starting check for user:', user.role)
+    
+    if (user.role !== 'admin') {
+      console.log('🔍 [CHECK_EXTENSION_REMINDER] Non-admin user, returning false')
+      return successResponse({ needsExtension: false })
+    }
+    
+    client = await getPool().connect()
+    console.log('🔍 [CHECK_EXTENSION_REMINDER] Database connected, executing query')
+    
+    const result = await client.query('SELECT count_schedules_needing_extension() as count')
+    const count = result.rows[0].count
+    
+    console.log('✅ [CHECK_EXTENSION_REMINDER] Query successful, count:', count)
+    
+    return successResponse({ 
+      needsExtension: count > 0,
+      count: count
+    })
+    
+  } catch (error) {
+    console.error('❌ [CHECK_EXTENSION_REMINDER] Error:', error)
+    console.error('❌ [CHECK_EXTENSION_REMINDER] Error details:', error.message)
+    return errorResponse(500, 'Failed to check extension reminder: ' + error.message)
+  } finally {
+    if (client) client.release()
   }
 }
