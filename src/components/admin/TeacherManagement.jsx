@@ -28,6 +28,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [deleteData, setDeleteData] = useState(null)
   const [showNotification, setShowNotification] = useState(false)
   const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
+  const [isAddingTeacher, setIsAddingTeacher] = useState(false)
+  const [isUpdatingTeacher, setIsUpdatingTeacher] = useState(false)
 
   useEffect(() => {
     if (activeTab === 'active') {
@@ -88,6 +90,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         return
       }
 
+      setIsAddingTeacher(true)
+
       const response = await apiService.createTeacher({
         name: newTeacher.name,
         email: newTeacher.email,
@@ -113,6 +117,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     } catch (error) {
       console.error('Error adding teacher:', error)
       showSuccessNotification('Error', 'Failed to add teacher', 'error')
+    } finally {
+      setIsAddingTeacher(false)
     }
   }
 
@@ -122,6 +128,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         showSuccessNotification('Validation Error', 'Please fill in all required fields', 'error')
         return
       }
+
+      setIsUpdatingTeacher(true)
 
       const response = await apiService.updateTeacher(editingTeacher.id, {
         name: editingTeacher.name,
@@ -139,6 +147,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     } catch (error) {
       console.error('Error updating teacher:', error)
       showSuccessNotification('Error', 'Failed to update teacher', 'error')
+    } finally {
+      setIsUpdatingTeacher(false)
     }
   }
 
@@ -401,62 +411,78 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                 placeholder="Teacher Name *"
                 value={newTeacher.name}
                 onChange={(e) => setNewTeacher(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <input
                 type="email"
                 placeholder="Email *"
                 value={newTeacher.email}
                 onChange={(e) => setNewTeacher(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <input
                 type="text"
                 placeholder="Username *"
                 value={newTeacher.username}
                 onChange={(e) => setNewTeacher(prev => ({ ...prev, username: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <input
                 type="password"
                 placeholder="Password *"
                 value={newTeacher.password}
                 onChange={(e) => setNewTeacher(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <textarea
                 placeholder="Description"
                 value={newTeacher.description}
                 onChange={(e) => setNewTeacher(prev => ({ ...prev, description: e.target.value }))}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingTeacher}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Teacher Photo
                 </label>
-                <ImageUploader
-                  onUpload={(url) => setNewTeacher(prev => ({ ...prev, photo_url: url }))}
-                  onError={(error) => console.error('Upload error:', error)}
-                  folder="lang-school/teachers"
-                  className="w-full"
-                  uploadedImageUrl={newTeacher.photo_url}
-                  showUploadArea={!newTeacher.photo_url}
-                />
+                <div className={isAddingTeacher ? 'pointer-events-none opacity-50' : ''}>
+                  <ImageUploader
+                    onUpload={(url) => setNewTeacher(prev => ({ ...prev, photo_url: url }))}
+                    onError={(error) => console.error('Upload error:', error)}
+                    folder="lang-school/teachers"
+                    className="w-full"
+                    uploadedImageUrl={newTeacher.photo_url}
+                    showUploadArea={!newTeacher.photo_url}
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                disabled={isAddingTeacher}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddTeacher}
-                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200"
+                disabled={isAddingTeacher || !newTeacher.name.trim() || !newTeacher.email.trim() || !newTeacher.username.trim() || !newTeacher.password.trim()}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[140px]"
               >
-                Add Teacher
+                {isAddingTeacher ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  'Add Teacher'
+                )}
               </button>
             </div>
           </motion.div>
@@ -480,7 +506,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                   placeholder="Teacher Name *"
                   value={editingTeacher.name}
                   onChange={(e) => setEditingTeacher(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  disabled={isUpdatingTeacher}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -490,7 +517,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                   placeholder="Email *"
                   value={editingTeacher.email}
                   onChange={(e) => setEditingTeacher(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  disabled={isUpdatingTeacher}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
@@ -500,21 +528,24 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                   value={editingTeacher.description || ''}
                   onChange={(e) => setEditingTeacher(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  disabled={isUpdatingTeacher}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Teacher Photo
                 </label>
-                <ImageUploader
-                  onUpload={(url) => setEditingTeacher(prev => ({ ...prev, photo_url: url }))}
-                  onError={(error) => console.error('Upload error:', error)}
-                  folder="lang-school/teachers"
-                  className="w-full"
-                  uploadedImageUrl={editingTeacher.photo_url}
-                  showUploadArea={true}
-                />
+                <div className={isUpdatingTeacher ? 'pointer-events-none opacity-50' : ''}>
+                  <ImageUploader
+                    onUpload={(url) => setEditingTeacher(prev => ({ ...prev, photo_url: url }))}
+                    onError={(error) => console.error('Upload error:', error)}
+                    folder="lang-school/teachers"
+                    className="w-full"
+                    uploadedImageUrl={editingTeacher.photo_url}
+                    showUploadArea={true}
+                  />
+                </div>
                 {editingTeacher.photo_url && (
                   <p className="text-sm text-neutral-600 mt-2">Click above to upload a new photo</p>
                 )}
@@ -523,15 +554,24 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                disabled={isUpdatingTeacher}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={handleEditTeacher}
-                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200"
+                disabled={isUpdatingTeacher || !editingTeacher.name.trim() || !editingTeacher.email.trim()}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[140px]"
               >
-                Update Teacher
+                {isUpdatingTeacher ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Updating...
+                  </>
+                ) : (
+                  'Update Teacher'
+                )}
               </button>
             </div>
           </motion.div>

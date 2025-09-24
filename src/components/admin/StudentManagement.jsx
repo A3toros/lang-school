@@ -20,6 +20,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
   })
   const [showAddModal, setShowAddModal] = useState(false)
   const [newStudent, setNewStudent] = useState({ name: '' })
+  const [isAddingStudent, setIsAddingStudent] = useState(false)
   const [teachers, setTeachers] = useState([])
   const [sortConfig, setSortConfig] = useState({
     key: 'added_date',
@@ -354,6 +355,8 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         return
       }
 
+      setIsAddingStudent(true)
+
       const response = await apiService.createStudent({
         name: newStudent.name,
         lessons_per_week: 1,
@@ -369,6 +372,8 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
     } catch (error) {
       console.error('Error adding student:', error)
       showSuccessNotification('Error', 'Failed to add student', 'error')
+    } finally {
+      setIsAddingStudent(false)
     }
   }
 
@@ -944,21 +949,31 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                 placeholder="Student Name"
                 value={newStudent.name}
                 onChange={(e) => setNewStudent(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isAddingStudent}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                disabled={isAddingStudent}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddStudent}
-                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200"
+                disabled={isAddingStudent || !newStudent.name.trim()}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[120px]"
               >
-                Add Student
+                {isAddingStudent ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  'Add Student'
+                )}
               </button>
             </div>
           </motion.div>

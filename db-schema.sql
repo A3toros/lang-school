@@ -1987,3 +1987,127 @@ WHERE EXTRACT(YEAR FROM week_start_date) = 2025
 ORDER BY teacher_id, week_start_date
 LIMIT 10;
 
+-- Modified delete_future_lesson function to delete all recurring lessons in the same time slot
+CREATE OR REPLACE FUNCTION delete_future_lesson(
+    schedule_id_param INTEGER,
+    deleted_by_user_id INTEGER
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+    schedule_rec RECORD;
+    deleted_count INTEGER := 0;
+BEGIN
+    -- Get the lesson details from the provided schedule_id
+    SELECT * INTO schedule_rec
+    FROM student_schedules
+    WHERE id = schedule_id_param;
+
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+
+    -- Log the deletion action
+    INSERT INTO schedule_history(
+        schedule_id,
+        action,
+        old_teacher_id,
+        changed_by,
+        change_date,
+        notes
+    ) VALUES (
+        schedule_rec.id,
+        'deleted_recurring',
+        schedule_rec.teacher_id,
+        deleted_by_user_id,
+        CURRENT_TIMESTAMP,
+        'Deleted all future recurring lessons for student ' || schedule_rec.student_id || 
+        ' with teacher ' || schedule_rec.teacher_id || 
+        ' on ' || schedule_rec.day_of_week || ' at ' || schedule_rec.time_slot
+    );
+
+    -- Delete ALL future lessons for this student/teacher/day/time combination
+    -- that are on or after the current week
+    DELETE FROM student_schedules
+    WHERE student_id = schedule_rec.student_id
+      AND teacher_id = schedule_rec.teacher_id
+      AND day_of_week = schedule_rec.day_of_week
+      AND time_slot = schedule_rec.time_slot
+      AND week_start_date >= get_current_week_start()
+      AND id != schedule_rec.id; -- Don't delete the original record we used as reference
+
+    -- Get count of deleted records
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+
+    -- Also delete the original record if it's in the future
+    IF schedule_rec.week_start_date >= get_current_week_start() THEN
+        DELETE FROM student_schedules WHERE id = schedule_rec.id;
+        deleted_count := deleted_count + 1;
+    END IF;
+
+    -- Update the history record with the count
+    UPDATE schedule_history 
+    SET notes = notes || ' (deleted ' || deleted_count || ' lessons)'
+    WHERE schedule_id = schedule_rec.id 
+      AND action = 'deleted_recurring'
+      AND changed_by = deleted_by_user_id;
+
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- Fix lesson_statistics view to include all lessons (not just current/future)
+-- This will allow monthly stats to show historical data
+
+-- Drop the existing view
+DROP VIEW IF EXISTS lesson_statistics CASCADE;
+
+-- Recreate the view without the date restriction
+CREATE VIEW lesson_statistics AS
+SELECT 
+    ss.teacher_id,
+    t.name as teacher_name,
+    ss.week_start_date,
+    COUNT(*) as total_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons
+FROM student_schedules ss
+JOIN teachers t ON ss.teacher_id = t.id
+WHERE ss.is_active = true
+GROUP BY ss.teacher_id, t.name, ss.week_start_date
+ORDER BY ss.teacher_id, ss.week_start_date;
+
+-- Also update the teacher_monthly_stats view to be consistent
+DROP VIEW IF EXISTS teacher_monthly_stats CASCADE;
+
+CREATE VIEW teacher_monthly_stats AS
+SELECT 
+    ss.teacher_id,
+    t.name as teacher_name,
+    DATE_TRUNC('month', ss.week_start_date)::DATE as month_start,
+    COUNT(*) as total_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+    COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons
+FROM student_schedules ss
+JOIN teachers t ON ss.teacher_id = t.id
+WHERE ss.is_active = true
+GROUP BY ss.teacher_id, t.name, DATE_TRUNC('month', ss.week_start_date)::DATE
+ORDER BY ss.teacher_id, month_start;
+
+-- Grant permissions to the app user
+GRANT SELECT ON lesson_statistics TO your_app_user;
+GRANT SELECT ON teacher_monthly_stats TO your_app_user;
+
+-- Test the view to make sure it works
+SELECT 
+    teacher_id,
+    teacher_name,
+    week_start_date,
+    total_lessons,
+    completed_lessons,
+    absent_lessons
+FROM lesson_statistics 
+WHERE EXTRACT(YEAR FROM week_start_date) = 2025 
+  AND EXTRACT(MONTH FROM week_start_date) = 9
+ORDER BY teacher_id, week_start_date
+LIMIT 10;

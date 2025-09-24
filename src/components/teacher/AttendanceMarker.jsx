@@ -15,7 +15,8 @@ const AttendanceMarker = ({
   const statusOptions = [
     { value: 'scheduled', label: 'Scheduled', color: 'bg-neutral-300 text-neutral-700', icon: '○' },
     { value: 'completed', label: 'Completed', color: 'bg-success text-white', icon: '✓' },
-    { value: 'absent', label: 'U', color: 'bg-error text-white', icon: '✗' }
+    { value: 'absent', label: 'U', color: 'bg-error text-white', icon: '✗' },
+    { value: 'absent_warned', label: 'UI', color: 'bg-warning text-white', icon: '⚠' }
   ]
 
   const handleStatusChange = async (newStatus) => {
@@ -82,12 +83,13 @@ const AttendanceMarker = ({
       </div>
 
       {/* Status Buttons */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {statusOptions.map((option) => (
           <Button
             key={option.value}
             onClick={() => handleStatusChange(option.value)}
             disabled={disabled || loading || currentStatus === option.value}
+            loading={loading && currentStatus !== option.value}
             variant={currentStatus === option.value ? 'primary' : 'outline'}
             size="sm"
             className={`text-xs ${
@@ -101,13 +103,6 @@ const AttendanceMarker = ({
         ))}
       </div>
 
-      {/* Loading Indicator */}
-      {loading && (
-        <div className="flex items-center justify-center py-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500"></div>
-          <span className="ml-2 text-sm text-neutral-600">Updating...</span>
-        </div>
-      )}
     </div>
   )
 }

@@ -30,6 +30,8 @@ const ContentManagement = () => {
     background_image_public_id: '',
     display_order: 0
   })
+  const [isSavingMission, setIsSavingMission] = useState(false)
+  const [isSavingCourse, setIsSavingCourse] = useState(false)
 
   useEffect(() => {
     fetchContent()
@@ -66,6 +68,7 @@ const ContentManagement = () => {
 
   const handleSaveMission = async () => {
     try {
+      setIsSavingMission(true)
       const response = await apiService.updateMissionContent(missionContent)
       if (response.success) {
         alert('Mission content saved successfully')
@@ -73,6 +76,8 @@ const ContentManagement = () => {
     } catch (error) {
       console.error('Error saving mission content:', error)
       alert('Failed to save mission content')
+    } finally {
+      setIsSavingMission(false)
     }
   }
 
@@ -175,6 +180,8 @@ const ContentManagement = () => {
         return
       }
 
+      setIsSavingCourse(true)
+
       const response = await apiService.createCourse(newCourse)
       if (response.success) {
         setNewCourse({
@@ -192,6 +199,8 @@ const ContentManagement = () => {
     } catch (error) {
       console.error('Error adding course:', error)
       alert('Failed to add course')
+    } finally {
+      setIsSavingCourse(false)
     }
   }
 
@@ -201,6 +210,8 @@ const ContentManagement = () => {
         alert('Please fill in required fields')
         return
       }
+
+      setIsSavingCourse(true)
 
       const response = await apiService.updateCourse(editingCourse.id, editingCourse)
       if (response.success) {
@@ -212,6 +223,8 @@ const ContentManagement = () => {
     } catch (error) {
       console.error('Error updating course:', error)
       alert('Failed to update course')
+    } finally {
+      setIsSavingCourse(false)
     }
   }
 
@@ -369,9 +382,17 @@ const ContentManagement = () => {
           <button
             type="button"
             onClick={handleSaveMission}
-            className="w-full sm:w-auto bg-primary-500 hover:bg-primary-600 text-white px-4 sm:px-6 py-2 sm:py-2 rounded-lg transition-colors duration-200 text-sm sm:text-base"
+            disabled={isSavingMission}
+            className="w-full sm:w-auto bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 sm:px-6 py-2 sm:py-2 rounded-lg transition-colors duration-200 text-sm sm:text-base flex items-center justify-center min-w-[180px]"
           >
-            Save Mission Content
+            {isSavingMission ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              'Save Mission Content'
+            )}
           </button>
         </motion.div>
       )}
@@ -388,7 +409,8 @@ const ContentManagement = () => {
             <button
               type="button"
               onClick={openAddCourse}
-              className="w-full sm:w-auto bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm sm:text-base"
+              disabled={isSavingCourse}
+              className="w-full sm:w-auto bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors duration-200 text-sm sm:text-base"
             >
               Add New Course
             </button>
@@ -541,7 +563,8 @@ const ContentManagement = () => {
                     setNewCourse(prev => ({ ...prev, name: e.target.value }))
                   }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isSavingCourse}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <textarea
                 placeholder="Short Description *"
@@ -554,7 +577,8 @@ const ContentManagement = () => {
                   }
                 }}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isSavingCourse}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <textarea
                 placeholder="Detailed Description (for popup)"
@@ -567,20 +591,23 @@ const ContentManagement = () => {
                   }
                 }}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isSavingCourse}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Background Image
                 </label>
-                <ImageUploader
-                  onUpload={(imageUrl, publicId) => handleCourseImageChange(imageUrl, publicId)}
-                  onError={(error) => console.error('Course image error:', error)}
-                  folder="lang-school/courses"
-                  transformations={[{ width: 800, height: 600, crop: 'fill' }]}
-                  uploadedImageUrl={editingCourse ? editingCourse.background_image : newCourse.background_image}
-                  showUploadArea={true}
-                />
+                <div className={isSavingCourse ? 'pointer-events-none opacity-50' : ''}>
+                  <ImageUploader
+                    onUpload={(imageUrl, publicId) => handleCourseImageChange(imageUrl, publicId)}
+                    onError={(error) => console.error('Course image error:', error)}
+                    folder="lang-school/courses"
+                    transformations={[{ width: 800, height: 600, crop: 'fill' }]}
+                    uploadedImageUrl={editingCourse ? editingCourse.background_image : newCourse.background_image}
+                    showUploadArea={true}
+                  />
+                </div>
               </div>
               <input
                 type="number"
@@ -593,23 +620,33 @@ const ContentManagement = () => {
                     setNewCourse(prev => ({ ...prev, display_order: parseInt(e.target.value) }))
                   }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                disabled={isSavingCourse}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div className="flex justify-end space-x-2 mt-6">
               <button
                 type="button"
                 onClick={() => setShowCourseModal(false)}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                disabled={isSavingCourse}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={editingCourse ? handleEditCourse : handleAddCourse}
-                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200"
+                disabled={isSavingCourse || !(editingCourse ? editingCourse.name : newCourse.name)?.trim() || !(editingCourse ? editingCourse.description : newCourse.description)?.trim()}
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200 flex items-center justify-center min-w-[140px]"
               >
-                {editingCourse ? 'Update Course' : 'Add Course'}
+                {isSavingCourse ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    {editingCourse ? 'Updating...' : 'Adding...'}
+                  </>
+                ) : (
+                  editingCourse ? 'Update Course' : 'Add Course'
+                )}
               </button>
             </div>
           </motion.div>
