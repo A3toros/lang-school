@@ -11,6 +11,7 @@ const TeacherSchedule = ({
   const [schedule, setSchedule] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [loadingAttendance, setLoadingAttendance] = useState({})
 
   useEffect(() => {
     if (teacherId && currentWeek) {
@@ -82,6 +83,45 @@ const TeacherSchedule = ({
     const newDate = new Date(currentDate)
     newDate.setDate(currentDate.getDate() + (direction * 7))
     onWeekChange(newDate.toISOString().split('T')[0])
+  }
+
+  const handleMarkAttendance = async (student, status, lessonDate, timeSlot) => {
+    // Find the schedule item for this student and time slot
+    const scheduleItem = schedule.find(s => 
+      s.student_name === student.student_name && 
+      s.time_slot === timeSlot
+    )
+    
+    if (scheduleItem) {
+      const loadingKey = `${scheduleItem.id}-${status}`
+      
+      try {
+        // Set loading state for this specific button
+        setLoadingAttendance(prev => ({ ...prev, [loadingKey]: true }))
+        
+        const response = await apiService.markAttendance(scheduleItem.id, status)
+        
+        if (response.success) {
+          // Update the schedule state
+          setSchedule(prevSchedule => 
+            prevSchedule.map(item => 
+              item.id === scheduleItem.id 
+                ? { ...item, attendance_status: status }
+                : item
+            )
+          )
+        } else {
+          console.error('Failed to mark attendance:', response.error)
+          alert('Failed to mark attendance: ' + (response.error || 'Unknown error'))
+        }
+      } catch (error) {
+        console.error('Error marking attendance:', error)
+        alert('Error marking attendance: ' + error.message)
+      } finally {
+        // Clear loading state
+        setLoadingAttendance(prev => ({ ...prev, [loadingKey]: false }))
+      }
+    }
   }
 
   const weekDates = getWeekDates(currentWeek)
@@ -178,18 +218,78 @@ const TeacherSchedule = ({
                   return (
                     <td key={dayIndex} className="p-1 text-center">
                       {student ? (
-                        <motion.button
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => onStudentClick(student, date.toISOString().split('T')[0], timeSlot)}
-                          className={`w-full p-1 rounded text-2xs font-medium transition-all duration-200 ${getAttendanceStatus(student.attendance_status)}`}
-                        >
-                          <div className="truncate">
-                            {student.student_name}
-                          </div>
-                        </motion.button>
+                        <div className="space-y-1">
+                          <motion.button
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => onStudentClick(student, date.toISOString().split('T')[0], timeSlot)}
+                            className={`w-full p-1 rounded text-2xs font-medium transition-all duration-200 ${getAttendanceStatus(student.attendance_status)}`}
+                          >
+                            <div className="truncate">
+                              {student.student_name}
+                            </div>
+                          </motion.button>
+                          {student.attendance_status === 'scheduled' && (
+                            <>
+                              <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => handleMarkAttendance(student, 'completed', date.toISOString().split('T')[0], timeSlot)}
+                                disabled={loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-completed`]}
+                                className="w-full p-1 bg-success hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded text-2xs font-medium transition-all duration-200 flex items-center justify-center"
+                              >
+                                {loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-completed`] ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                    Saving...
+                                  </>
+                                ) : (
+                                  'Complete'
+                                )}
+                              </motion.button>
+                              <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => handleMarkAttendance(student, 'absent', date.toISOString().split('T')[0], timeSlot)}
+                                disabled={loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-absent`]}
+                                className="w-full p-1 bg-error hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded text-2xs font-medium transition-all duration-200 flex items-center justify-center"
+                              >
+                                {loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-absent`] ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                    Saving...
+                                  </>
+                                ) : (
+                                  'Mark as U'
+                                )}
+                              </motion.button>
+                              <motion.button
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => handleMarkAttendance(student, 'absent_warned', date.toISOString().split('T')[0], timeSlot)}
+                                disabled={loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-absent_warned`]}
+                                className="w-full p-1 bg-warning hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded text-2xs font-medium transition-all duration-200 flex items-center justify-center"
+                              >
+                                {loadingAttendance[`${schedule.find(s => s.student_name === student.student_name && s.time_slot === timeSlot)?.id}-absent_warned`] ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                    Saving...
+                                  </>
+                                ) : (
+                                  'Mark as UI'
+                                )}
+                              </motion.button>
+                            </>
+                          )}
+                        </div>
                       ) : (
                         <div className="w-full p-2 text-xs text-neutral-400">
                           -

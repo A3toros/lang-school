@@ -196,8 +196,12 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       
       weeks.push({
         weekNumber,
-        start: new Date(currentWeekStart),
-        end: new Date(weekEnd)
+        start: currentWeekStart.getFullYear() + '-' + 
+          String(currentWeekStart.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(currentWeekStart.getDate()).padStart(2, '0'), // Store as string (timezone-safe)
+        end: weekEnd.getFullYear() + '-' + 
+          String(weekEnd.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(weekEnd.getDate()).padStart(2, '0') // Store as string (timezone-safe)
       })
       
       currentWeekStart.setDate(currentWeekStart.getDate() + 7)
@@ -226,13 +230,17 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         return 0
       }
       
-      const selectedWeekStart = selectedWeek.start.toISOString().split('T')[0]
+      // selectedWeek.start is now a string, so we can use it directly
+      const selectedWeekStart = selectedWeek.start
       console.log(`🔍 [GET_LESSON_COUNT] Looking for week ${selectedWeekStart} in student ${studentId} lessons:`, studentLessons)
       
       // Find matching week in monthly lessons
       for (const [weekDate, weekData] of Object.entries(studentLessons)) {
-        // Convert backend date to match frontend format
-        const backendDate = new Date(weekDate).toISOString().split('T')[0]
+        // Convert backend date to match frontend format (avoid timezone conversion)
+        const backendDateObj = new Date(weekDate)
+        const backendDate = backendDateObj.getFullYear() + '-' + 
+          String(backendDateObj.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(backendDateObj.getDate()).padStart(2, '0')
         if (backendDate === selectedWeekStart) {
           console.log(`🔍 [GET_LESSON_COUNT] Found matching week ${weekDate} (${backendDate}):`, weekData)
           return weekData.total_lessons || 0
@@ -675,7 +683,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                       }}
                       className="block w-full text-left px-3 py-2 hover:bg-gray-100 transition-colors"
                     >
-                      Week {week.weekNumber}: {week.start.toLocaleDateString()} - {week.end.toLocaleDateString()}
+                      Week {week.weekNumber}: {new Date(week.start).toLocaleDateString()} - {new Date(week.end).toLocaleDateString()}
                     </button>
                   ))}
                 </div>
@@ -701,7 +709,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
             </div>
             <div className="text-xs sm:text-sm text-gray-600">
               {selectedWeek 
-                ? `Showing lesson counts for Week ${selectedWeek.weekNumber} (${selectedWeek.start.toLocaleDateString()} - ${selectedWeek.end.toLocaleDateString()})`
+                ? `Showing lesson counts for Week ${selectedWeek.weekNumber} (${new Date(selectedWeek.start).toLocaleDateString()} - ${new Date(selectedWeek.end).toLocaleDateString()})`
                 : `Showing lesson counts for ${currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
               }
             </div>

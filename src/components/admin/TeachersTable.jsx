@@ -100,6 +100,7 @@ const TeachersTable = () => {
     
     const weeks = []
     let currentWeekStart = new Date(firstDay)
+    let weekNumber = 1
     
     // Find the Monday of the first week
     const dayOfWeek = firstDay.getDay()
@@ -113,13 +114,19 @@ const TeachersTable = () => {
       // Only include weeks that overlap with the current month
       if (weekEnd >= firstDay && currentWeekStart <= lastDay) {
         weeks.push({
-          start: new Date(currentWeekStart),
-          end: new Date(weekEnd),
+          weekNumber,
+          start: currentWeekStart.getFullYear() + '-' + 
+            String(currentWeekStart.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(currentWeekStart.getDate()).padStart(2, '0'), // Store as string (timezone-safe)
+          end: weekEnd.getFullYear() + '-' + 
+            String(weekEnd.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(weekEnd.getDate()).padStart(2, '0'), // Store as string (timezone-safe)
           label: `${currentWeekStart.getDate()}-${weekEnd.getDate()} ${month.toLocaleString('default', { month: 'short' })}`
         })
       }
       
       currentWeekStart.setDate(currentWeekStart.getDate() + 7)
+      weekNumber++
     }
     
     return weeks
@@ -137,13 +144,17 @@ const TeachersTable = () => {
       
       // Find the week that matches the selected week
       // We need to match by week start date (Monday)
-      const selectedWeekStart = selectedWeek.start.toISOString().split('T')[0]
+      // selectedWeek.start is now a string, so we can use it directly
+      const selectedWeekStart = selectedWeek.start
       console.log(`🔍 [GET_LESSON_COUNT] Looking for week ${selectedWeekStart} in teacher ${teacherId} stats:`, teacherStats)
       
       // Look through all weeks for this teacher and find matching week
       for (const [weekDate, weekData] of Object.entries(teacherStats)) {
-        // Convert backend date to match frontend format
-        const backendDate = new Date(weekDate).toISOString().split('T')[0]
+        // Convert backend date to match frontend format (avoid timezone conversion)
+        const backendDateObj = new Date(weekDate)
+        const backendDate = backendDateObj.getFullYear() + '-' + 
+          String(backendDateObj.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(backendDateObj.getDate()).padStart(2, '0')
         if (backendDate === selectedWeekStart) {
           console.log(`🔍 [GET_LESSON_COUNT] Found matching week ${weekDate} (${backendDate}):`, weekData)
           return weekData.total_lessons || 0
@@ -294,7 +305,7 @@ const TeachersTable = () => {
                     }}
                     className="block w-full text-left px-3 py-2 hover:bg-gray-100 transition-colors"
                   >
-                    {week.label}
+                    Week {week.weekNumber}: {new Date(week.start).toLocaleDateString()} - {new Date(week.end).toLocaleDateString()}
                   </button>
                 ))}
               </div>

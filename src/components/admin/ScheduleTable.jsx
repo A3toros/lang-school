@@ -40,6 +40,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
   const [showAutofillTip, setShowAutofillTip] = useState(false)
   const [autofillStudent, setAutofillStudent] = useState(null)
   const [autofillTimeout, setAutofillTimeout] = useState(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [resetData, setResetData] = useState(null)
   
   // Draft mode state
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -619,6 +621,38 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
   }
 
+  // Reset lesson function
+  const handleResetLesson = async (student) => {
+    try {
+      const response = await apiService.markAttendance(student.id, 'scheduled')
+      
+      if (response.success) {
+        // Refresh the schedule to show updated status
+        await fetchSchedule()
+        showNotificationMessage('Success!', 'Lesson has been reset for the teacher to submit a new report.', 'success')
+      } else {
+        console.error('Failed to reset lesson:', response.error)
+        showNotificationMessage('Error', 'Failed to reset lesson: ' + (response.error || 'Unknown error'), 'error')
+      }
+    } catch (error) {
+      console.error('Error resetting lesson:', error)
+      showNotificationMessage('Error', 'Error resetting lesson: ' + error.message, 'error')
+    }
+  }
+
+  const confirmResetLesson = (student) => {
+    setResetData(student)
+    setShowResetConfirm(true)
+  }
+
+  const handleConfirmReset = async () => {
+    if (resetData) {
+      await handleResetLesson(resetData)
+      setShowResetConfirm(false)
+      setResetData(null)
+    }
+  }
+
   // Enhanced cell content rendering
   const renderCellContent = (dayIndex, timeSlot, existingSchedule) => {
     const cellKey = `${dayIndex}-${timeSlot}`
@@ -1180,15 +1214,18 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               key={`student-${student.id}-${weekStart}`}
                               className={`p-1 rounded-lg text-2xs font-medium text-center transition-all duration-200 ${getStatusColor(status)} ${
                                 editMode && isEditable ? 'cursor-pointer' : 
-                                status === 'completed' ? 'cursor-pointer' : ''
+                                status === 'completed' ? 'cursor-pointer' : 
+                                status === 'absent' || status === 'absent_warned' ? 'cursor-pointer' : ''
                               }`}
                               whileHover={
                                 editMode && isEditable ? { scale: 1.02 } : 
-                                status === 'completed' ? { scale: 1.02 } : {}
+                                status === 'completed' ? { scale: 1.02 } : 
+                                status === 'absent' || status === 'absent_warned' ? { scale: 1.02 } : {}
                               }
                               whileTap={
                                 editMode && isEditable ? { scale: 0.98 } : 
-                                status === 'completed' ? { scale: 0.98 } : {}
+                                status === 'completed' ? { scale: 0.98 } : 
+                                status === 'absent' || status === 'absent_warned' ? { scale: 0.98 } : {}
                               }
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
@@ -1199,6 +1236,8 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                                   () => handleDeleteLesson(student) : 
                                   status === 'completed' ? 
                                     () => fetchLessonReport(student) : 
+                                  status === 'absent' || status === 'absent_warned' ?
+                                    () => confirmResetLesson(student) :
                                     undefined
                               }
                             >
@@ -1210,6 +1249,10 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                               ) : status === 'completed' ? (
                                 <div className="mt-1 text-2xs opacity-75">
                                   Click to view report
+                                </div>
+                              ) : status === 'absent' || status === 'absent_warned' ? (
+                                <div className="mt-1 text-2xs opacity-75">
+                                  Click to reset
                                 </div>
                               ) : null}
                             </motion.div>
@@ -1397,6 +1440,43 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                 className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg"
               >
                 Delete Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Lesson Confirmation Modal */}
+      {showResetConfirm && resetData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-blue-600">
+              Reset Lesson
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to reset this lesson to "Scheduled"?
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-800">
+                <strong>This will:</strong>
+              </p>
+              <ul className="text-sm text-blue-700 mt-2 list-disc list-inside">
+                <li>Reset the lesson status to "Scheduled"</li>
+                <li>Allow the teacher to mark attendance again</li>
+              </ul>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+              >
+                Reset Lesson
               </button>
             </div>
           </div>
