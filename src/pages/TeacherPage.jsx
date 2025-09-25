@@ -77,16 +77,15 @@ const TeacherPage = () => {
     try {
       console.log('🔍 [TEACHER_PAGE] fetchAttendanceStats called with user:', user)
       console.log('🔍 [TEACHER_PAGE] user.teacherId:', user.teacherId, 'period:', `${currentWeek},${getWeekEnd(currentWeek)}`)
-      const response = await apiService.getAttendanceStats(
+      const response = await apiService.getTeacherStats(
         user.teacherId,
-        null, // studentId - not needed for teacher stats
-        `${currentWeek},${getWeekEnd(currentWeek)}`
+        { week_start: currentWeek }
       )
       if (response.success) {
         setAttendanceStats({
           completed: response.stats.completed_lessons || 0,
           absent: response.stats.absent_lessons || 0,
-          warned: response.stats.warned_lessons || 0
+          warned: 0 // Not counting warned in stats, but keeping for UI consistency
         })
       }
     } catch (error) {
@@ -556,22 +555,22 @@ const TeacherPage = () => {
                 </div>
               </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-6"
-              >
-                <div className="flex items-center">
-                  <div className="p-1 sm:p-2 bg-yellow-100 rounded-lg">
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-600 text-xs sm:text-sm md:text-base">⚠</div>
-                  </div>
-                  <div className="ml-2 sm:ml-3 md:ml-4">
-                    <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">U</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900">{attendanceStats.warned}</p>
-                  </div>
-                </div>
-              </motion.div>
+               <motion.div
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 transition={{ delay: 0.2 }}
+                 className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-6"
+               >
+                 <div className="flex items-center">
+                   <div className="p-1 sm:p-2 bg-blue-100 rounded-lg">
+                     <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-blue-600 text-xs sm:text-sm md:text-base">📊</div>
+                   </div>
+                   <div className="ml-2 sm:ml-3 md:ml-4">
+                     <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">Total</p>
+                     <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900">{Number(attendanceStats.completed) + Number(attendanceStats.absent)}</p>
+                   </div>
+                 </div>
+               </motion.div>
             </div>
 
         {/* Schedule Table */}
