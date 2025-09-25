@@ -137,26 +137,54 @@ const getPaginationParams = (queryStringParameters) => {
 // Date helpers
 const getCurrentWeekStart = () => {
   const now = new Date()
-  const dayOfWeek = now.getDay()
+  
+  // Get local date components to avoid timezone conversion issues
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const date = now.getDate()
+  
+  // Create a new date object with local date components
+  const today = new Date(year, month, date)
+  const dayOfWeek = today.getDay()
+  
   // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
   // Calculate days to subtract to get to Monday
   const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
   // Use setDate to avoid timezone issues
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - daysToMonday)
-  return monday.toISOString().split('T')[0]
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - daysToMonday)
+  
+  // Format result using local components to avoid timezone conversion
+  const mondayYear = monday.getFullYear()
+  const mondayMonth = monday.getMonth()
+  const mondayDate = monday.getDate()
+  return `${mondayYear}-${String(mondayMonth + 1).padStart(2, '0')}-${String(mondayDate).padStart(2, '0')}`
 }
 
 const getWeekStart = (date) => {
   const d = new Date(date)
-  const dayOfWeek = d.getDay()
+  
+  // Get local date components to avoid timezone conversion issues
+  const year = d.getFullYear()
+  const month = d.getMonth()
+  const dateNum = d.getDate()
+  
+  // Create a new date object with local date components
+  const localDate = new Date(year, month, dateNum)
+  const dayOfWeek = localDate.getDay()
+  
   // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
   // Calculate days to subtract to get to Monday
   const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
   // Use setDate to avoid timezone issues
-  const monday = new Date(d)
-  monday.setDate(d.getDate() - daysToMonday)
-  return monday.toISOString().split('T')[0]
+  const monday = new Date(localDate)
+  monday.setDate(localDate.getDate() - daysToMonday)
+  
+  // Format result using local components to avoid timezone conversion
+  const mondayYear = monday.getFullYear()
+  const mondayMonth = monday.getMonth()
+  const mondayDate = monday.getDate()
+  return `${mondayYear}-${String(mondayMonth + 1).padStart(2, '0')}-${String(mondayDate).padStart(2, '0')}`
 }
 
 module.exports = {

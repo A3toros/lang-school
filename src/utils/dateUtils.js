@@ -36,10 +36,21 @@ export const formatTime = (timeString) => {
 }
 
 export const getCurrentWeekStart = () => {
-  const today = new Date()
+  // Get current date in local timezone to avoid server timezone issues
+  const now = new Date()
+  
+  // Get local date components to avoid timezone conversion issues
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const date = now.getDate()
+  
+  // Create a new date object with local date components
+  const today = new Date(year, month, date)
   const day = today.getDay()
   
-  console.log('🔍 [getCurrentWeekStart] Today:', today.toISOString().split('T')[0])
+  // Format date as YYYY-MM-DD using local components
+  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`
+  console.log('🔍 [getCurrentWeekStart] Today:', todayStr)
   console.log('🔍 [getCurrentWeekStart] Day of week:', day)
   
   // JavaScript: Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6
@@ -55,7 +66,11 @@ export const getCurrentWeekStart = () => {
   const monday = new Date(today)
   monday.setDate(today.getDate() - daysToMonday)
   
-  const result = monday.toISOString().split('T')[0]
+  // Format result using local components to avoid timezone conversion
+  const mondayYear = monday.getFullYear()
+  const mondayMonth = monday.getMonth()
+  const mondayDate = monday.getDate()
+  const result = `${mondayYear}-${String(mondayMonth + 1).padStart(2, '0')}-${String(mondayDate).padStart(2, '0')}`
   console.log('🔍 [getCurrentWeekStart] Calculated Monday:', result)
   
   return result
@@ -63,14 +78,28 @@ export const getCurrentWeekStart = () => {
 
 export const getWeekStart = (date) => {
   const d = new Date(date)
-  const day = d.getDay()
+  
+  // Get local date components to avoid timezone conversion issues
+  const year = d.getFullYear()
+  const month = d.getMonth()
+  const dateNum = d.getDate()
+  
+  // Create a new date object with local date components
+  const localDate = new Date(year, month, dateNum)
+  const day = localDate.getDay()
+  
   // JavaScript: Sunday = 0, Monday = 1, ..., Saturday = 6
   // Calculate days to subtract to get to Monday
   const daysToMonday = day === 0 ? 6 : day - 1
   // Use setDate to avoid timezone issues
-  const monday = new Date(d)
-  monday.setDate(d.getDate() - daysToMonday)
-  return monday.toISOString().split('T')[0]
+  const monday = new Date(localDate)
+  monday.setDate(localDate.getDate() - daysToMonday)
+  
+  // Format result using local components to avoid timezone conversion
+  const mondayYear = monday.getFullYear()
+  const mondayMonth = monday.getMonth()
+  const mondayDate = monday.getDate()
+  return `${mondayYear}-${String(mondayMonth + 1).padStart(2, '0')}-${String(mondayDate).padStart(2, '0')}`
 }
 
 export const getWeekEnd = (weekStart) => {
