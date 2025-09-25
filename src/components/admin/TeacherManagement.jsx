@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import ImageUploader from '../common/ImageUploader'
 import SuccessNotification from '../common/SuccessNotification'
+import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
 
 const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [teachers, setTeachers] = useState([])
@@ -27,6 +28,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [statusChangeData, setStatusChangeData] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteData, setDeleteData] = useState(null)
+  const [isDeletingTeacher, setIsDeletingTeacher] = useState(false)
   const [showNotification, setShowNotification] = useState(false)
   const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
   const [isAddingTeacher, setIsAddingTeacher] = useState(false)
@@ -206,6 +208,7 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
 
   const confirmHardDelete = async () => {
     try {
+      setIsDeletingTeacher(true)
       const response = await apiService.deleteTeacher(deleteData.id)
       if (response.success) {
         // Refresh both active and inactive teachers to get accurate counts
@@ -215,12 +218,13 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         ])
         showSuccessNotification('Success!', 'Teacher deleted successfully - all data removed', 'success')
       }
-      
       setShowDeleteConfirm(false)
       setDeleteData(null)
     } catch (error) {
       console.error('Error deleting teacher:', error)
       showSuccessNotification('Error', 'Error deleting teacher', 'error')
+    } finally {
+      setIsDeletingTeacher(false)
     }
   }
 
@@ -764,70 +768,42 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     )}
 
     {/* Hard Delete Confirmation Modal */}
-    {showDeleteConfirm && deleteData && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-        >
-          <div className="p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-red-600">
-                ⚠️ Permanent Deletion
-              </h3>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-gray-600 mb-4">
-                Are you sure you want to <strong>permanently delete</strong> teacher{' '}
-                <span className="font-semibold text-red-600">{deleteData.name}</span>?
-              </p>
-              
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-800 text-sm font-semibold mb-2">
-                  This action will permanently delete:
-                </p>
-                <ul className="text-red-700 text-sm space-y-1">
-                  <li>• Teacher record and user account</li>
-                  <li>• All lesson reports and attendance data</li>
-                  <li>• All schedules (past and future)</li>
-                  <li>• Schedule templates and history</li>
-                  <li>• Teacher photo from Cloudinary</li>
-                </ul>
-                <p className="text-red-800 text-sm font-semibold mt-2">
-                  This action cannot be undone!
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors duration-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmHardDelete}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
-              >
-                Delete Permanently
-              </button>
-            </div>
+    <LoadingSpinnerModal
+      isOpen={showDeleteConfirm && !!deleteData}
+      onClose={() => setShowDeleteConfirm(false)}
+      title="⚠️ Permanent Deletion"
+      confirmText="Delete Permanently"
+      cancelText="Cancel"
+      onConfirm={confirmHardDelete}
+      loading={isDeletingTeacher}
+      loadingText="Deleting..."
+      confirmButtonColor="bg-red-500 hover:bg-red-600"
+      disabled={isDeletingTeacher}
+    >
+      {deleteData && (
+        <div className="mb-2">
+          <p className="text-gray-600 mb-4">
+            Are you sure you want to <strong>permanently delete</strong> teacher{' '}
+            <span className="font-semibold text-red-600">{deleteData.name}</span>?
+          </p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800 text-sm font-semibold mb-2">
+              This action will permanently delete:
+            </p>
+            <ul className="text-red-700 text-sm space-y-1">
+              <li>• Teacher record and user account</li>
+              <li>• All lesson reports and attendance data</li>
+              <li>• All schedules (past and future)</li>
+              <li>• Schedule templates and history</li>
+              <li>• Teacher photo from Cloudinary</li>
+            </ul>
+            <p className="text-red-800 text-sm font-semibold mt-2">
+              This action cannot be undone!
+            </p>
           </div>
-        </motion.div>
-      </div>
-    )}
+        </div>
+      )}
+    </LoadingSpinnerModal>
 
     {/* Success Notification */}
     <SuccessNotification
