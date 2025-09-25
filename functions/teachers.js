@@ -220,7 +220,7 @@ async function createTeacher(event, user) {
       return errorResponse(403, 'Forbidden')
     }
 
-    const { name, email, photo_url, description, username, password } = JSON.parse(event.body)
+    const { name, email, photo_url, description, username, password, meeting_id, meeting_password } = JSON.parse(event.body)
 
     if (!name || !email || !username || !password) {
       return errorResponse(400, 'Missing required fields')
@@ -244,8 +244,8 @@ async function createTeacher(event, user) {
 
       // Insert teacher
       const teacherResult = await client.query(
-        'INSERT INTO teachers (name, email, photo_url, description) VALUES ($1, $2, $3, $4) RETURNING *',
-        [name, email, photo_url || null, description || null]
+        'INSERT INTO teachers (name, email, photo_url, description, meeting_id, meeting_password) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [name, email, photo_url || null, description || null, meeting_id || null, meeting_password || null]
       )
 
       const teacher = teacherResult.rows[0]
@@ -275,7 +275,7 @@ async function createTeacher(event, user) {
 async function updateTeacher(event, user) {
   try {
     const teacherId = parseInt(event.path.split('/')[3])
-    const { name, email, photo_url, description } = JSON.parse(event.body)
+    const { name, email, photo_url, description, meeting_id, meeting_password } = JSON.parse(event.body)
 
     // Check permissions
     if (user.role === 'teacher' && user.teacherId !== teacherId) {
@@ -284,12 +284,12 @@ async function updateTeacher(event, user) {
 
     const queryText = `
       UPDATE teachers 
-      SET name = $1, email = $2, photo_url = $3, description = $4, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $5 AND is_active = true
+      SET name = $1, email = $2, photo_url = $3, description = $4, meeting_id = $5, meeting_password = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7 AND is_active = true
       RETURNING *
     `
     
-    const result = await query(queryText, [name, email, photo_url, description, teacherId])
+    const result = await query(queryText, [name, email, photo_url, description, meeting_id, meeting_password, teacherId])
     
     if (result.rows.length === 0) {
       return errorResponse(404, 'Teacher not found')
