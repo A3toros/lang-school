@@ -550,7 +550,7 @@ const TeacherPage = () => {
                     <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-red-600 text-xs sm:text-sm md:text-base">✗</div>
                   </div>
                   <div className="ml-2 sm:ml-3 md:ml-4">
-                    <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">U</p>
+                    <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">UI</p>
                     <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900">{attendanceStats.absent}</p>
                   </div>
                 </div>
@@ -567,7 +567,7 @@ const TeacherPage = () => {
                     <div className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-600 text-xs sm:text-sm md:text-base">⚠</div>
                   </div>
                   <div className="ml-2 sm:ml-3 md:ml-4">
-                    <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">UI</p>
+                    <p className="text-2xs sm:text-xs md:text-sm font-medium text-gray-600">U</p>
                     <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900">{attendanceStats.warned}</p>
                   </div>
                 </div>
@@ -1057,16 +1057,16 @@ const TeacherPage = () => {
           title="Confirm Attendance Marking"
           loading={isMarkingAttendance}
           loadingText="Marking..."
-          confirmText={`Mark as ${pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}`}
+          confirmText={`Mark as ${pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}`}
           confirmButtonColor={pendingAttendance?.status === 'absent' ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'}
           onConfirm={confirmMarkAttendance}
         >
           <p className="text-gray-700">
-            Are you sure you want to mark this lesson as <strong>{pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</strong>?
+            Are you sure you want to mark this lesson as <strong>{pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</strong>?
           </p>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p><strong>Student:</strong> {pendingAttendance?.studentName}</p>
-            <p><strong>Status:</strong> {pendingAttendance?.status === 'absent' ? 'U' : pendingAttendance?.status === 'absent_warned' ? 'UI' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</p>
+            <p><strong>Status:</strong> {pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</p>
           </div>
         </LoadingSpinnerModal>
 

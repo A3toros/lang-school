@@ -1385,11 +1385,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-error rounded"></div>
-            <span>U</span>
+            <span>UI</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-yellow-500 rounded"></div>
-            <span>UI</span>
+            <span>U</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-neutral-200 rounded"></div>

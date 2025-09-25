@@ -90,7 +90,7 @@ const AttendanceTracking = ({
       case 'completed':
         return 'Completed'
       case 'absent':
-        return 'U'
+        return 'UI'
       case 'scheduled':
         return 'Scheduled'
       default:

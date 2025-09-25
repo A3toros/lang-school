@@ -250,7 +250,7 @@ const TeachersTable = () => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-3 sm:p-4 md:p-6">
+    <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-4 sm:p-6">
       <div className="mb-4 sm:mb-6">
         <h3 className="text-lg sm:text-xl font-semibold text-neutral-800 mb-4">Teachers Overview</h3>
         
@@ -260,7 +260,7 @@ const TeachersTable = () => {
           <div className="flex items-center space-x-1 sm:space-x-2">
             <button
               onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1))}
-              className="px-2 py-1 sm:px-3 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
+              className="px-2 py-1 sm:px-3 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
             >
               ←
             </button>
@@ -269,7 +269,7 @@ const TeachersTable = () => {
             </h3>
             <button
               onClick={() => setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1))}
-              className="px-2 py-1 sm:px-3 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
+              className="px-2 py-1 sm:px-3 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors text-sm sm:text-base"
             >
               →
             </button>
@@ -279,7 +279,7 @@ const TeachersTable = () => {
           <div className="relative">
             <button
               onClick={() => setShowWeekDropdown(!showWeekDropdown)}
-              className="px-2 py-1 sm:px-3 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs sm:text-sm"
+              className="px-2 py-1 sm:px-3 sm:py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs sm:text-sm"
             >
               {selectedWeek ? selectedWeek.label : 'All Weeks'}
             </button>
@@ -328,16 +328,16 @@ const TeachersTable = () => {
           <table className="w-full min-w-[320px]">
             <thead>
               <tr className="border-b border-neutral-200">
-                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Teacher</th>
-                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/4">
+                <th className="text-left py-2 px-2 sm:py-3 sm:px-3 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Teacher</th>
+                <th className="text-left py-2 px-2 sm:py-3 sm:px-3 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/4">
                   <span className="sm:hidden">s</span>
                   <span className="hidden sm:inline">Students</span>
                 </th>
-                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/6">
+                <th className="text-left py-2 px-2 sm:py-3 sm:px-3 font-semibold text-xs sm:text-sm text-neutral-700 w-1/6 sm:w-1/6">
                   <span className="sm:hidden">l</span>
                   <span className="hidden sm:inline">Lessons</span>
                 </th>
-                <th className="text-left py-2 px-2 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Actions</th>
+                <th className="text-left py-2 px-2 sm:py-3 sm:px-3 font-semibold text-xs sm:text-sm text-neutral-700 w-1/3 sm:w-auto">Actions</th>
               </tr>
             </thead>
           <tbody>
@@ -354,28 +354,28 @@ const TeachersTable = () => {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="py-1 px-2">
-                    <span className="text-xs font-medium text-neutral-800 truncate">
+                  <td className="py-1 px-2 sm:py-2 sm:px-3">
+                    <span className="text-xs sm:text-sm font-medium text-neutral-800 truncate">
                       {teacher.name}
                     </span>
                   </td>
                   
-                  <td className="py-1 px-2">
-                    <span className="text-xs font-medium text-neutral-600">
+                  <td className="py-1 px-2 sm:py-2 sm:px-3">
+                    <span className="text-xs sm:text-sm font-medium text-neutral-600">
                       {teacher.student_count || 0}
                     </span>
                   </td>
                   
-                  <td className="py-1 px-2">
-                    <span className="text-xs font-medium text-neutral-600">
+                  <td className="py-1 px-2 sm:py-2 sm:px-3">
+                    <span className="text-xs sm:text-sm font-medium text-neutral-600">
                       {getLessonCount(teacher.id)}
                     </span>
                   </td>
                   
-                  <td className="py-2 px-2">
+                  <td className="py-1 px-2 sm:py-2 sm:px-3">
                     <button
                       onClick={() => toggleTeacher(teacher.id)}
-                      className="inline-flex items-center px-0.5 py-0.5 sm:px-1.5 border border-neutral-300 rounded text-xs font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-primary-500 w-auto sm:w-auto justify-center sm:justify-start"
+                      className="inline-flex items-center px-1.5 py-1 sm:px-2 sm:py-1.5 border border-neutral-300 rounded text-xs sm:text-sm font-medium text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-1 focus:ring-primary-500 w-auto justify-center sm:justify-start"
                     >
                       <span className="hidden sm:inline">{isExpanded ? 'Hide Students' : 'Show Students'}</span>
                       <span className="sm:hidden">{isExpanded ? 'Hide' : 'Show'}</span>

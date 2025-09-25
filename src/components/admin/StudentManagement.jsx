@@ -611,7 +611,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
       <div className="flex space-x-1 mb-4 sm:mb-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab('active')}
-          className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
+          className={`px-1.5 sm:px-4 py-0.5 sm:py-2 rounded-lg text-xs sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
             activeTab === 'active'
               ? 'bg-primary-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -621,7 +621,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         </button>
         <button
           onClick={() => setActiveTab('inactive')}
-          className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
+          className={`px-1.5 sm:px-4 py-0.5 sm:py-2 rounded-lg text-xs sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
             activeTab === 'inactive'
               ? 'bg-primary-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -815,10 +815,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   whileHover={{ scale: 1.01 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base font-medium text-gray-900">
+                  <td className="px-2 py-1 sm:px-3 sm:py-3 text-xs sm:text-base font-medium text-gray-900">
                     <div className="truncate">{student.name}</div>
                   </td>
-                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
+                  <td className="px-2 py-1 sm:px-3 sm:py-3 text-xs sm:text-base text-gray-500">
                     {student.is_active ? (
                       <button
                         onClick={(e) => {
@@ -834,15 +834,15 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                       <span className="text-gray-400 text-xs">-</span>
                     )}
                   </td>
-                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
+                  <td className="px-2 py-1 sm:px-3 sm:py-3 text-xs sm:text-base text-gray-500">
                     <span className="text-xs sm:text-sm font-medium text-gray-600">
                       {getLessonCount(student.id)}
                     </span>
                   </td>
-                  <td className="px-4 sm:px-3 py-2 sm:py-3 text-sm sm:text-base text-gray-500 hidden xl:table-cell">
+                  <td className="px-2 py-1 sm:px-3 sm:py-3 text-sm sm:text-base text-gray-500 hidden xl:table-cell">
                     {new Date(student.added_date).toLocaleDateString()}
                   </td>
-                  <td className="px-4 sm:px-3 py-1 sm:py-3">
+                  <td className="px-2 py-1 sm:px-3 sm:py-3">
                     <div className="flex items-center space-x-4 sm:space-x-2">
                       <span className={`inline-flex px-1 py-0.5 sm:px-2 sm:py-1 text-xs sm:text-sm font-semibold rounded-full ${
                         student.is_active 
@@ -852,13 +852,18 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                         <span className="sm:hidden">{student.is_active ? 'A' : 'I'}</span>
                         <span className="hidden sm:inline">{student.is_active ? 'Active' : 'Inactive'}</span>
                       </span>
+                    </div>
+                  </td>
+                  <td className="px-1 py-1 sm:px-1 sm:py-3 text-xs sm:text-base text-gray-500">
+                    {/* Actions column - buttons for both mobile and desktop */}
+                     <div className="flex space-x-1 sm:space-x-2 sm:justify-start">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleStatusChange(student, !student.is_active)
                         }}
-                        className={`text-xs px-1 py-0.5 rounded transition-colors ${
+                        className={`text-xs px-1 py-0.5 sm:px-2 sm:py-1 rounded transition-colors ${
                           student.is_active
                             ? 'text-red-600 hover:text-red-800 hover:bg-red-50'
                             : 'text-green-600 hover:text-green-800 hover:bg-green-50'
@@ -875,16 +880,13 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                             e.stopPropagation()
                             handleHardDelete(student)
                           }}
-                          className="text-red-600 hover:text-red-800 text-xs px-1 py-0.5 rounded hover:bg-red-50"
+                          className="text-red-600 hover:text-red-800 text-xs px-1 py-0.5 sm:px-2 sm:py-1 rounded hover:bg-red-50"
                         >
                           <span className="sm:hidden">Del</span>
                           <span className="hidden sm:inline">Delete</span>
                         </button>
                       )}
                     </div>
-                  </td>
-                  <td className="px-4 sm:px-3 py-1 sm:py-3 text-xs sm:text-base text-gray-500">
-                    {/* Actions column - now empty on mobile, can be used for other actions on desktop */}
                   </td>
                 </motion.tr>
               ))
