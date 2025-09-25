@@ -5,6 +5,34 @@ import apiService from '../utils/api'
 import { getCurrentWeekStart, getWeekEnd, getWeekStart, getWeekDates, formatDate, getCurrentMonth, addDays, subtractDays, getWeekInfoForMonth, getWeekNavigationInfo } from '../utils/dateUtils'
 import FileLibrary from '../components/teacher/FileLibrary'
 import LoadingSpinnerModal from '../components/common/LoadingSpinnerModal'
+import SuccessNotification from '../components/common/SuccessNotification'
+
+function getMonday(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day === 0 ? -6 : 1 - day); // move to Monday
+  d.setDate(d.getDate() + diff);
+  d.setHours(0,0,0,0);
+  return d;
+}
+
+function formatYMD(date) {
+  return date.toISOString().split('T')[0];
+}
+
+function isEditableWeek(weekStartDateStr) {
+  if (!weekStartDateStr) return false;
+  const currentMonday = getMonday(new Date());
+  const prevMonday = new Date(currentMonday);
+  prevMonday.setDate(prevMonday.getDate() - 7);
+
+  const weekStartDate = new Date(weekStartDateStr);
+  const weekMondayStr = formatYMD(getMonday(weekStartDate));
+  const currentMondayStr = formatYMD(currentMonday);
+  const prevMondayStr = formatYMD(prevMonday);
+
+  return weekMondayStr === currentMondayStr || weekMondayStr === prevMondayStr;
+}
 
 const TeacherPage = () => {
   const { user, logout } = useAuth()
@@ -34,6 +62,17 @@ const TeacherPage = () => {
   const [activeTab, setActiveTab] = useState('schedule')
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false)
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
+  const [notif, setNotif] = useState({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+    duration: 4000
+  })
+
+  const showNotification = (type, title, message, duration = 4000) => {
+    setNotif({ visible: true, type, title, message, duration })
+  }
 
   useEffect(() => {
     console.log('🔍 [TEACHER_PAGE] useEffect triggered with user:', user)
@@ -198,12 +237,14 @@ const TeacherPage = () => {
     }
   }
 
-  const handleAttendanceClick = (scheduleId, status, studentName) => {
-    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Called with:', { scheduleId, status, studentName })
-    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Current modal state before:', showAttendanceConfirmModal)
-    setPendingAttendance({ scheduleId, status, studentName })
-    setShowAttendanceConfirmModal(true)
-    console.log('🔍 [HANDLE_ATTENDANCE_CLICK] Setting modal to true, pending:', { scheduleId, status, studentName })
+  const handleAttendanceClick = (scheduleId, status, studentName, weekStartDate) => {
+    // Frontend-only restriction: only current or previous week
+    if (!isEditableWeek(weekStartDate)) {
+      showNotification('warning', 'Action not allowed', 'Sorry, you are only allowed to edit current week or previous week.')
+      return;
+    }
+    setPendingAttendance({ scheduleId, status, studentName });
+    setShowAttendanceConfirmModal(true);
   }
 
   const confirmMarkAttendance = async () => {
@@ -224,6 +265,12 @@ const TeacherPage = () => {
   }
 
   const handleStudentClick = (student, timeSlot, scheduleItem, dayIndex) => {
+    // Block if not current or previous week
+    if (!isEditableWeek(scheduleItem?.week_start_date)) {
+      showNotification('warning', 'Action not allowed', 'Sorry, you are only allowed to edit current week or previous week.')
+      return;
+    }
+
     console.log('🔍 [HANDLE_STUDENT_CLICK] Called with:', { student, timeSlot, scheduleItem, dayIndex })
     
     // Use the actual lesson date from the schedule, not today's date
@@ -238,7 +285,7 @@ const TeacherPage = () => {
     
     if (lessonsWithReports.has(lessonKey)) {
       console.log('🔍 [HANDLE_STUDENT_CLICK] Report already exists, showing alert')
-      alert('Report already submitted for this lesson')
+      showNotification('info', 'Already submitted', 'Report already submitted for this lesson.')
       return
     }
     
@@ -249,6 +296,8 @@ const TeacherPage = () => {
     setShowReportModal(true)
     console.log('🔍 [HANDLE_STUDENT_CLICK] Report modal should now be visible')
   }
+
+
 
   const handleSubmitReport = () => {
     if (!reportComment.trim()) {
@@ -344,32 +393,8 @@ const TeacherPage = () => {
         setSelectedDayIndex(null)
         setPendingReport(null)
         
-        // Show success message with better UX
-        const successMessage = document.createElement('div')
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2 transform transition-all duration-300 ease-out'
-        successMessage.style.transform = 'translateX(100%)'
-        successMessage.innerHTML = `
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-          </svg>
-          <span>Report submitted successfully!</span>
-        `
-        document.body.appendChild(successMessage)
-        
-        // Animate in
-        setTimeout(() => {
-          successMessage.style.transform = 'translateX(0)'
-        }, 10)
-        
-        // Remove success message after 3 seconds with animation
-        setTimeout(() => {
-          successMessage.style.transform = 'translateX(100%)'
-          setTimeout(() => {
-            if (successMessage.parentNode) {
-              successMessage.parentNode.removeChild(successMessage)
-            }
-          }, 300)
-        }, 3000)
+        // Toast success
+        showNotification('success', 'Success', 'Report submitted successfully!')
       }
     } catch (error) {
       console.error('Error submitting report:', error)
@@ -899,7 +924,12 @@ const TeacherPage = () => {
                                         }
                                         e.stopPropagation()
                                         console.log('🔍 [ABSENT_BUTTON_CLICK] Calling handleAttendanceClick')
-                                        handleAttendanceClick(scheduleItem.id, 'absent', scheduleItem.student_name)
+                                        handleAttendanceClick(
+                                          scheduleItem.id,
+                                          'absent',
+                                          scheduleItem.student_name,
+                                          scheduleItem.week_start_date
+                                        )
                                       }}
                                       disabled={isMarked}
                                       className={`px-0.5 py-0.5 md:px-2 md:py-1 rounded text-xs transition-all duration-200 ${
@@ -919,7 +949,12 @@ const TeacherPage = () => {
                                     onClick={(e) => {
                                       if (isMarked) return
                                       e.stopPropagation()
-                                      handleAttendanceClick(scheduleItem.id, 'absent_warned', scheduleItem.student_name)
+                                      handleAttendanceClick(
+                                        scheduleItem.id,
+                                        'absent_warned',
+                                        scheduleItem.student_name,
+                                        scheduleItem.week_start_date
+                                      )
                                     }}
                                     disabled={isMarked}
                                     className={`px-0.5 py-0.5 md:px-2 md:py-1 rounded text-xs transition-all duration-200 ${
@@ -1156,6 +1191,14 @@ const TeacherPage = () => {
           </div>
         )}
       </main>
+      <SuccessNotification
+        isVisible={notif.visible}
+        onClose={() => setNotif(prev => ({ ...prev, visible: false }))}
+        title={notif.title}
+        message={notif.message}
+        type={notif.type}
+        duration={notif.duration}
+      />
     </div>
   )
 }
