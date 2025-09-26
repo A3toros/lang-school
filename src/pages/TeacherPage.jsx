@@ -273,11 +273,11 @@ const TeacherPage = () => {
 
     console.log('🔍 [HANDLE_STUDENT_CLICK] Called with:', { student, timeSlot, scheduleItem, dayIndex })
     
-    // Use the actual lesson date from the schedule, not today's date
-    const lessonDate = scheduleItem.week_start_date || currentWeek
-    // Use week start date for consistent key generation
-    const lessonWeekStart = getWeekStart(lessonDate)
-    const lessonKey = `${student.id}-${lessonWeekStart}-${timeSlot}`
+    // Use the actual lesson date (week_start_date + day_of_week) for key generation
+    const lessonDateBase = new Date(scheduleItem.week_start_date)
+    lessonDateBase.setDate(lessonDateBase.getDate() + scheduleItem.day_of_week)
+    const lessonDateStr = `${lessonDateBase.getFullYear()}-${String(lessonDateBase.getMonth() + 1).padStart(2, '0')}-${String(lessonDateBase.getDate()).padStart(2, '0')}`
+    const lessonKey = `${student.id}-${lessonDateStr}-${timeSlot}`
     
     console.log('🔍 [HANDLE_STUDENT_CLICK] Checking lesson key:', lessonKey)
     console.log('🔍 [HANDLE_STUDENT_CLICK] Current reports set:', Array.from(lessonsWithReports))
