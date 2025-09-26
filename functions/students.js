@@ -70,6 +70,14 @@ exports.handler = async (event, context) => {
       return await getHistoryStudents(event, user)
     } else if (path === '/api/students/monthly-lessons' && method === 'GET') {
       return await getStudentMonthlyLessons(event, user)
+    } else if (path === '/api/students/packages' && method === 'GET') {
+      return await getStudentPackages(event, user)
+    } else if (path === '/api/students/packages' && method === 'POST') {
+      return await addStudentPackage(event, user)
+    } else if (path.match(/^\/api\/students\/packages\/\d+$/) && method === 'DELETE') {
+      return await deleteStudentPackage(event, user)
+    } else if (path === '/api/students/packages/exhausted' && method === 'GET') {
+      return await getExhaustedPackages(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -1247,6 +1255,281 @@ async function getStudentMonthlyLessons(event, user) {
   } catch (error) {
     console.error('Get student monthly lessons error:', error)
     return errorResponse(500, 'Failed to fetch monthly lessons')
+  }
+}
+
+// =====================================================
+// STUDENT PACKAGES MANAGEMENT
+// =====================================================
+
+// Get all student packages with tracking using weekly_schedule view
+async function getStudentPackages(event, user) {
+  try {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Access denied. Admin role required.')
+    }
+    
+    console.log('Getting student packages...')
+    const { name, status, page = 1, limit = 20, sort = 'date_added', direction = 'desc' } = event.queryStringParameters || {}
+    
+    let queryText = `
+      SELECT 
+        sp.id as package_id,
+        sp.student_id,
+        s.name as student_name,
+        sp.number_of_lessons,
+        sp.date_added,
+        sp.week_start_date,
+        sp.day_of_week,
+        -- Count lessons taken since package creation using weekly_schedule view
+        COALESCE(lessons_taken.count, 0) as lessons_taken,
+        -- Calculate remaining lessons
+        (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) as lessons_remaining,
+        -- Package status
+        CASE 
+            WHEN (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 0 THEN 'exhausted'
+            WHEN (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 2 THEN 'low'
+            ELSE 'active'
+        END as package_status,
+        sp.created_at,
+        sp.updated_at
+      FROM student_packages sp
+      JOIN students s ON sp.student_id = s.id
+      LEFT JOIN (
+        -- Use weekly_schedule view to count lessons taken
+        SELECT 
+          ws.student_id,
+          sp_inner.id as package_id,
+          COUNT(*) as count
+        FROM weekly_schedule ws
+        JOIN student_packages sp_inner ON ws.student_id = sp_inner.student_id
+          WHERE ws.attendance_status IN ('completed', 'absent')
+            AND (
+              -- For the package's start week: only count from day_of_week onwards (4,5,6)
+              (ws.week_start_date = sp_inner.week_start_date AND ws.day_of_week >= sp_inner.day_of_week)
+              OR
+              -- For all subsequent weeks: count all days
+              ws.week_start_date > sp_inner.week_start_date
+            )
+        GROUP BY ws.student_id, sp_inner.id
+      ) lessons_taken ON sp.id = lessons_taken.package_id
+      WHERE s.is_active = true
+    `
+    
+    const params = []
+    let paramCount = 0
+    
+    if (name) {
+      paramCount++
+      queryText += ` AND s.name ILIKE $${paramCount}`
+      params.push(`%${name}%`)
+    }
+    
+    // Status filtering: allow only 'low' and 'exhausted'; 'all' (or anything else) returns all packages
+    if (status === 'exhausted') {
+      queryText += ` AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 0`
+    } else if (status === 'low') {
+      queryText += ` AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) > 0 AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 2`
+    }
+    
+    // Add sorting
+    const validSortFields = ['student_name', 'date_added', 'lessons_remaining', 'package_status']
+    const sortField = validSortFields.includes(sort) ? sort : 'date_added'
+    const sortDirection = direction === 'asc' ? 'ASC' : 'DESC'
+    
+    if (sortField === 'student_name') {
+      queryText += ` ORDER BY s.name ${sortDirection}`
+    } else if (sortField === 'lessons_remaining') {
+      queryText += ` ORDER BY (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) ${sortDirection}`
+    } else if (sortField === 'package_status') {
+      queryText += ` ORDER BY (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) ${sortDirection}`
+    } else {
+      queryText += ` ORDER BY sp.${sortField} ${sortDirection}`
+    }
+    
+    // Add pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+    queryText += ` LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`
+    params.push(parseInt(limit), offset)
+    
+    const result = await query(queryText, params)
+    
+    // Get total count for pagination
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM student_packages sp
+      JOIN students s ON sp.student_id = s.id
+      LEFT JOIN (
+        -- Use weekly_schedule view to count lessons taken
+        SELECT 
+          ws.student_id,
+          sp_inner.id as package_id,
+          COUNT(*) as count
+        FROM weekly_schedule ws
+        JOIN student_packages sp_inner ON ws.student_id = sp_inner.student_id
+          WHERE ws.attendance_status IN ('completed', 'absent')
+            AND (
+              -- For the package's start week: only count from day_of_week onwards (4,5,6)
+              (ws.week_start_date = sp_inner.week_start_date AND ws.day_of_week >= sp_inner.day_of_week)
+              OR
+              -- For all subsequent weeks: count all days
+              ws.week_start_date > sp_inner.week_start_date
+            )
+        GROUP BY ws.student_id, sp_inner.id
+      ) lessons_taken ON sp.id = lessons_taken.package_id
+      WHERE s.is_active = true
+    `
+    const countParams = []
+    let countParamCount = 0
+    
+    if (name) {
+      countParamCount++
+      countQuery += ` AND s.name ILIKE $${countParamCount}`
+      countParams.push(`%${name}%`)
+    }
+    
+    // Status filtering in count query (only 'low' and 'exhausted')
+    if (status === 'exhausted') {
+      countQuery += ` AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 0`
+    } else if (status === 'low') {
+      countQuery += ` AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) > 0 AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 2`
+    }
+    
+    const countResult = await query(countQuery, countParams)
+    const total = parseInt(countResult.rows[0].total)
+    
+    return successResponse({ 
+      packages: result.rows,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    })
+  } catch (error) {
+    console.error('Get student packages error:', error)
+    return errorResponse(500, 'Failed to fetch student packages')
+  }
+}
+
+// Add new student package
+async function addStudentPackage(event, user) {
+  try {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Access denied. Admin role required.')
+    }
+    
+    const { student_id, number_of_lessons, date_added } = JSON.parse(event.body)
+    
+    if (!student_id || !number_of_lessons || !date_added) {
+      return errorResponse(400, 'Missing required fields: student_id, number_of_lessons, date_added')
+    }
+    
+    if (number_of_lessons <= 0) {
+      return errorResponse(400, 'Number of lessons must be greater than 0')
+    }
+    
+    // Derive week_start_date and day_of_week directly from date_added in SQL (timezone-safe)
+    const weekStartQuery = `SELECT get_week_start($1::date) as week_start, (EXTRACT(DOW FROM $1::date)::int + 6) % 7 as dow`
+    const weekResult = await query(weekStartQuery, [date_added])
+    const week_start_date = weekResult.rows[0].week_start
+    const dayOfWeek = weekResult.rows[0].dow
+    
+    const insertQuery = `
+      INSERT INTO student_packages (student_id, number_of_lessons, date_added, week_start_date, day_of_week)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `
+    
+    const result = await query(insertQuery, [student_id, number_of_lessons, date_added, week_start_date, dayOfWeek])
+    
+    return successResponse({ 
+      package: result.rows[0],
+      message: 'Package added successfully' 
+    })
+  } catch (error) {
+    console.error('Add student package error:', error)
+    return errorResponse(500, 'Failed to add student package')
+  }
+}
+
+// Delete student package
+async function deleteStudentPackage(event, user) {
+  try {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Access denied. Admin role required.')
+    }
+    
+    const packageId = event.path.split('/').pop()
+    
+    if (!packageId || isNaN(packageId)) {
+      return errorResponse(400, 'Invalid package ID')
+    }
+    
+    const deleteQuery = `DELETE FROM student_packages WHERE id = $1 RETURNING *`
+    const result = await query(deleteQuery, [packageId])
+    
+    if (result.rows.length === 0) {
+      return errorResponse(404, 'Package not found')
+    }
+    
+    return successResponse({ 
+      message: 'Package deleted successfully',
+      package: result.rows[0]
+    })
+  } catch (error) {
+    console.error('Delete student package error:', error)
+    return errorResponse(500, 'Failed to delete student package')
+  }
+}
+
+// Get exhausted packages using weekly_schedule view
+async function getExhaustedPackages(event, user) {
+  try {
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return errorResponse(403, 'Access denied. Admin role required.')
+    }
+    
+    const queryText = `
+      SELECT 
+        sp.id as package_id,
+        sp.student_id,
+        s.name as student_name,
+        sp.number_of_lessons,
+        COALESCE(lessons_taken.count, 0) as lessons_taken,
+        sp.date_added
+      FROM student_packages sp
+      JOIN students s ON sp.student_id = s.id
+      LEFT JOIN (
+        -- Use weekly_schedule view to count lessons taken
+        SELECT 
+          ws.student_id,
+          sp_inner.id as package_id,
+          COUNT(*) as count
+        FROM weekly_schedule ws
+        JOIN student_packages sp_inner ON ws.student_id = sp_inner.student_id
+          WHERE ws.attendance_status IN ('completed', 'absent')
+            AND (
+              -- For the package's start week: only count from day_of_week onwards (4,5,6)
+              (ws.week_start_date = sp_inner.week_start_date AND ws.day_of_week >= sp_inner.day_of_week)
+              OR
+              -- For all subsequent weeks: count all days
+              ws.week_start_date > sp_inner.week_start_date
+            )
+        GROUP BY ws.student_id, sp_inner.id
+      ) lessons_taken ON sp.id = lessons_taken.package_id
+      WHERE s.is_active = true
+        AND (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 0
+      ORDER BY sp.date_added DESC
+    `
+    
+    const result = await query(queryText)
+    return successResponse({ packages: result.rows })
+  } catch (error) {
+    console.error('Get exhausted packages error:', error)
+    return errorResponse(500, 'Failed to fetch exhausted packages')
   }
 }
 

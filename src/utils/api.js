@@ -2091,6 +2091,101 @@ class ApiService {
     })
   }
 
+  // Student Package Management API
+  async getStudentPackages(filters = {}) {
+    apiDebugger.info('PACKAGES', 'Fetching student packages', { filters })
+    
+    try {
+      const params = new URLSearchParams()
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          params.append(key, value)
+        }
+      })
+      
+      const queryString = params.toString()
+      const result = await this.makeRequest(`/students/packages${queryString ? `?${queryString}` : ''}`)
+      
+      if (result.success) {
+        apiDebugger.success('PACKAGES', 'Student packages fetched successfully', { 
+          count: result.packages?.length || 0,
+          total: result.total || 0
+        })
+      } else {
+        apiDebugger.warning('PACKAGES', 'Failed to fetch student packages', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('PACKAGES', 'Error fetching student packages', { error: error.message })
+      throw error
+    }
+  }
+
+  async addStudentPackage(packageData) {
+    apiDebugger.info('PACKAGES', 'Adding student package', { packageData })
+    
+    try {
+      const result = await this.makeRequest('/students/packages', {
+        method: 'POST',
+        body: JSON.stringify(packageData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('PACKAGES', 'Student package added successfully', { packageId: result.package?.id })
+      } else {
+        apiDebugger.warning('PACKAGES', 'Failed to add student package', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('PACKAGES', 'Error adding student package', { error: error.message })
+      throw error
+    }
+  }
+
+  async deleteStudentPackage(packageId) {
+    apiDebugger.info('PACKAGES', 'Deleting student package', { packageId })
+    
+    try {
+      const result = await this.makeRequest(`/students/packages/${packageId}`, {
+        method: 'DELETE'
+      })
+      
+      if (result.success) {
+        apiDebugger.success('PACKAGES', 'Student package deleted successfully', { packageId })
+      } else {
+        apiDebugger.warning('PACKAGES', 'Failed to delete student package', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('PACKAGES', 'Error deleting student package', { error: error.message })
+      throw error
+    }
+  }
+
+  async getExhaustedPackages() {
+    apiDebugger.info('PACKAGES', 'Fetching exhausted packages')
+    
+    try {
+      const result = await this.makeRequest('/students/packages/exhausted')
+      
+      if (result.success) {
+        apiDebugger.success('PACKAGES', 'Exhausted packages fetched successfully', { 
+          count: result.packages?.length || 0 
+        })
+      } else {
+        apiDebugger.warning('PACKAGES', 'Failed to fetch exhausted packages', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('PACKAGES', 'Error fetching exhausted packages', { error: error.message })
+      throw error
+    }
+  }
+
 }
 
 // Create and export a singleton instance

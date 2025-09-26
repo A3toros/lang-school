@@ -2387,3 +2387,147 @@ COMMENT ON INDEX idx_schedule_extension_performance IS 'Critical performance ind
 COMMENT ON INDEX idx_schedule_templates_active IS 'Optimizes template join filtering by is_active status';
 COMMENT ON INDEX idx_student_schedules_active_week IS 'Optimizes schedule filtering by is_active and week_start_date';
 
+-- Student Lesson Packages - Optimal Database Schema
+-- Language School Management System
+
+-- =====================================================
+-- 1. CREATE STUDENT_PACKAGES TABLE
+-- =====================================================
+
+CREATE TABLE student_packages (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    number_of_lessons INTEGER NOT NULL CHECK (number_of_lessons > 0),
+    date_added DATE NOT NULL,
+    week_start_date DATE NOT NULL,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 2. CREATE INDEXES FOR PERFORMANCE
+-- =====================================================
+
+CREATE INDEX idx_student_packages_student_id ON student_packages(student_id);
+CREATE INDEX idx_student_packages_date_added ON student_packages(date_added);
+CREATE INDEX idx_student_packages_week_start ON student_packages(week_start_date);
+CREATE INDEX idx_student_packages_day_of_week ON student_packages(day_of_week);
+
+-- =====================================================
+-- 3. CREATE UPDATED_AT TRIGGER
+-- =====================================================
+
+CREATE TRIGGER update_student_packages_updated_at 
+    BEFORE UPDATE ON student_packages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =====================================================
+-- 4. CREATE SIMPLE VIEW FOR PACKAGE TRACKING
+-- =====================================================
+
+-- Fix student_package_tracking view to use date_added instead of week_start_date
+-- This ensures lessons are only counted AFTER package creation
+
+DROP VIEW IF EXISTS student_package_tracking;
+
+CREATE VIEW student_package_tracking AS
+SELECT 
+    sp.id as package_id,
+    sp.student_id,
+    s.name as student_name,
+    sp.number_of_lessons,
+    sp.date_added,
+    -- Count lessons taken since package creation using existing weekly_schedule view
+    COALESCE(lessons_taken.count, 0) as lessons_taken,
+    -- Calculate remaining lessons
+    (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) as lessons_remaining,
+    -- Package status
+    CASE 
+        WHEN (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 0 THEN 'exhausted'
+        WHEN (sp.number_of_lessons - COALESCE(lessons_taken.count, 0)) <= 2 THEN 'low'
+        ELSE 'active'
+    END as package_status,
+    sp.created_at,
+    sp.updated_at
+FROM student_packages sp
+JOIN students s ON sp.student_id = s.id
+    LEFT JOIN (
+        -- Use weekly_schedule view to count lessons taken AFTER package creation
+        SELECT 
+            ws.student_id,
+            sp_inner.id as package_id,
+            COUNT(*) as count
+        FROM weekly_schedule ws
+        JOIN student_packages sp_inner ON ws.student_id = sp_inner.student_id
+               WHERE ws.attendance_status IN ('completed', 'absent')
+                   AND (
+                     -- For the package's start week: only count from day_of_week onwards (4,5,6)
+                     (ws.week_start_date = sp_inner.week_start_date AND ws.day_of_week >= sp_inner.day_of_week)
+                     OR
+                     -- For all subsequent weeks: count all days
+                     ws.week_start_date > sp_inner.week_start_date
+                   )
+        GROUP BY ws.student_id, sp_inner.id
+    ) lessons_taken ON sp.id = lessons_taken.package_id
+WHERE s.is_active = true;
+
+
+-- =====================================================
+-- 5. CREATE ESSENTIAL FUNCTIONS ONLY
+-- =====================================================
+
+-- Function to get exhausted packages (for notifications)
+CREATE OR REPLACE FUNCTION get_exhausted_packages()
+RETURNS TABLE (
+    package_id INTEGER,
+    student_id INTEGER,
+    student_name VARCHAR,
+    total_lessons INTEGER,
+    lessons_taken INTEGER,
+    date_added DATE
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        spt.package_id,
+        spt.student_id,
+        spt.student_name,
+        spt.number_of_lessons,
+        spt.lessons_taken,
+        spt.date_added
+    FROM student_package_tracking spt
+    WHERE spt.package_status = 'exhausted'
+    ORDER BY spt.date_added DESC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- 6. ADD COMMENTS FOR DOCUMENTATION
+-- =====================================================
+
+COMMENT ON TABLE student_packages IS 'Tracks student lesson packages with remaining lesson counts';
+COMMENT ON COLUMN student_packages.number_of_lessons IS 'Total number of lessons in the package';
+COMMENT ON COLUMN student_packages.date_added IS 'Date when package was added (stored as DATE, not TIMESTAMP)';
+
+COMMENT ON VIEW student_package_tracking IS 'View showing package status and remaining lessons using weekly_schedule view';
+COMMENT ON FUNCTION get_exhausted_packages IS 'Get all packages that have been exhausted (0 lessons remaining)';
+
+-- =====================================================
+-- 7. USAGE EXAMPLES
+-- =====================================================
+
+-- Example 1: Add a new package
+-- INSERT INTO student_packages (student_id, number_of_lessons, date_added) 
+-- VALUES (1, 10, CURRENT_DATE);
+
+-- Example 2: Get all package tracking data
+-- SELECT * FROM student_package_tracking;
+
+-- Example 3: Get exhausted packages
+-- SELECT * FROM get_exhausted_packages();
+
+-- Example 4: Delete a package
+-- DELETE FROM student_packages WHERE id = 1;
+
+

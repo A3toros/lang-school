@@ -4,12 +4,13 @@ import apiService from '../../utils/api'
 import SuccessNotification from '../common/SuccessNotification'
 import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
 import TeacherManagementModal from './TeacherManagementModal'
+import PackageManagement from './PackageManagement'
 
 const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
   const [students, setStudents] = useState([])
   const [inactiveStudents, setInactiveStudents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('active') // 'active' or 'inactive'
+  const [activeTab, setActiveTab] = useState('active') // 'active', 'inactive', or 'packages'
   const [filters, setFilters] = useState({
     name: '',
     status: 'active'
@@ -624,6 +625,16 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
           Active ({students.length})
         </button>
         <button
+          onClick={() => setActiveTab('packages')}
+          className={`px-1.5 sm:px-4 py-0.5 sm:py-2 rounded-lg text-xs sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
+            activeTab === 'packages'
+              ? 'bg-primary-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Packages
+        </button>
+        <button
           onClick={() => setActiveTab('inactive')}
           className={`px-1.5 sm:px-4 py-0.5 sm:py-2 rounded-lg text-xs sm:text-base font-medium transition-colors duration-200 whitespace-nowrap ${
             activeTab === 'inactive'
@@ -899,8 +910,14 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-4 sm:mt-6 gap-2 sm:gap-0">
+      {/* Packages Tab Content */}
+      {activeTab === 'packages' && (
+        <PackageManagement />
+      )}
+
+      {/* Pagination - Only show for Active and Inactive tabs */}
+      {(activeTab === 'active' || activeTab === 'inactive') && (
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mt-4 sm:mt-6 gap-2 sm:gap-0">
         <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
           Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total || 0)} of {pagination.total || 0} students
         </div>
@@ -921,6 +938,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
           </button>
         </div>
       </div>
+      )}
 
       {/* Add Student Modal */}
       {showAddModal && (
@@ -1015,7 +1033,7 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                     <div className="text-2xl font-bold text-red-600">
                       {selectedStudentStats.absent || 0}
                     </div>
-                    <div className="text-sm text-red-700">U</div>
+                    <div className="text-sm text-red-700">I</div>
                   </div>
                   <div className="p-4 bg-yellow-50 rounded-lg text-center">
                     <div className="text-2xl font-bold text-yellow-600">

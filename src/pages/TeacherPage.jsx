@@ -1091,16 +1091,16 @@ const TeacherPage = () => {
           title="Confirm Attendance Marking"
           loading={isMarkingAttendance}
           loadingText="Marking..."
-          confirmText={`Mark as ${pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}`}
+          confirmText={`Mark as ${pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'I' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}`}
           confirmButtonColor={pendingAttendance?.status === 'absent' ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'}
           onConfirm={confirmMarkAttendance}
         >
           <p className="text-gray-700">
-            Are you sure you want to mark this lesson as <strong>{pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</strong>?
+            Are you sure you want to mark this lesson as <strong>{pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'I' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</strong>?
           </p>
           <div className="bg-gray-50 p-3 rounded-lg">
             <p><strong>Student:</strong> {pendingAttendance?.studentName}</p>
-            <p><strong>Status:</strong> {pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'U' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</p>
+            <p><strong>Status:</strong> {pendingAttendance?.status === 'absent' ? 'UI' : pendingAttendance?.status === 'absent_warned' ? 'I' : pendingAttendance?.status?.replace('_', ' ').toUpperCase()}</p>
           </div>
         </LoadingSpinnerModal>
 

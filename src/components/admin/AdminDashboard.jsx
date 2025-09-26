@@ -276,7 +276,7 @@ const AdminDashboard = () => {
             <div className="text-2xl font-semibold text-green-600">{analytics.totals.completed}</div>
           </div>
           <div className="card p-3 text-center">
-            <div className="text-xs text-neutral-600">U</div>
+            <div className="text-xs text-neutral-600">I</div>
             <div className="text-2xl font-semibold text-red-600">{analytics.totals.absent}</div>
           </div>
           <div className="card p-3 text-center">
