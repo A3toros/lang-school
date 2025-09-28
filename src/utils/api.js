@@ -839,13 +839,7 @@ class ApiService {
     })
   }
 
-  // Mark attendance for a specific schedule (completed | absent | absent_warned)
-  async markScheduleAttendance(scheduleId, status, attendanceDate) {
-    return this.makeRequest(`/schedules/${scheduleId}/attendance`, {
-      method: 'POST',
-      body: JSON.stringify({ status, date: attendanceDate })
-    })
-  }
+
 
   async getScheduleConflicts(weekStart) {
     const params = weekStart ? `?week_start=${weekStart}` : ''

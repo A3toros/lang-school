@@ -182,7 +182,7 @@ async function markAttendance(event, user) {
   const client = await getPool().connect()
   
   try {
-    const { schedule_id, status, attendance_date } = JSON.parse(event.body)
+    const { schedule_id, status } = JSON.parse(event.body)
 
     if (!schedule_id || !status) {
       return errorResponse(400, 'schedule_id and status are required')
@@ -219,22 +219,28 @@ async function markAttendance(event, user) {
       return errorResponse(400, 'Cannot mark attendance for inactive schedule')
     }
 
-    const attendanceDate = attendance_date || new Date().toISOString().split('T')[0]
-
     if (status === 'completed') {
       // Use atomic database function for completion (idempotent)
       await client.query('SELECT mark_schedule_completed($1, $2)', [schedule_id, user.userId])
     } else {
-      // Safe update for absent/warned (consistency trigger handles lesson_type)
-      const queryText = `
-        UPDATE student_schedules 
-        SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3 AND is_active = TRUE
-        RETURNING *
-      `
-      
-      const result = await client.query(queryText, [status, attendanceDate, schedule_id])
-      
+      // Safe update for absent/absent_warned/scheduled
+      if (status === 'scheduled') {
+        await client.query(
+          `UPDATE student_schedules 
+           SET attendance_status = 'scheduled', attendance_date = NULL, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1 AND is_active = TRUE`,
+          [schedule_id]
+        )
+      } else {
+        await client.query(
+          `UPDATE student_schedules 
+           SET attendance_status = $1,
+               attendance_date = schedule_lesson_date(week_start_date, day_of_week),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2 AND is_active = TRUE`,
+          [status, schedule_id]
+        )
+      }
     }
 
     await client.query('COMMIT')

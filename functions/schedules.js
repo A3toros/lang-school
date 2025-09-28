@@ -60,8 +60,6 @@ exports.handler = async (event, context) => {
     } else if (path === '/api/schedules/reassign-student' && method === 'POST') {
       return await reassignStudent(event, user)
     } else if (path.match(/^\/api\/schedules\/\d+\/attendance$/) && method === 'POST') {
-      return await markAttendance(event, user)
-    } else if (path.match(/^\/api\/analytics\/students\/\d+\/attendance$/) && method === 'GET') {
       return await getStudentAttendanceAnalytics(event, user)
     } else if (path.match(/^\/api\/analytics\/teachers\/\d+\/attendance$/) && method === 'GET') {
       return await getTeacherAttendanceAnalytics(event, user)
@@ -416,59 +414,7 @@ async function updateSchedule(event, user) {
   }
 }
 
-// REWRITTEN markAttendance function - Use mark_schedule_completed for completion
-async function markAttendance(event, user) {
-  try {
-    const scheduleId = parseInt(event.path.split('/')[3])
-    const { status, date } = JSON.parse(event.body || '{}')
 
-    if (!['completed', 'absent', 'absent_warned'].includes(status)) {
-      return errorResponse(400, 'Invalid status')
-    }
-
-    // Check ownership for teachers
-    const scheduleRes = await query('SELECT student_id, teacher_id, time_slot, is_active FROM student_schedules WHERE id = $1', [scheduleId])
-    if (scheduleRes.rows.length === 0) return errorResponse(404, 'Schedule not found')
-    if (user.role === 'teacher' && scheduleRes.rows[0].teacher_id !== user.teacherId) {
-      return errorResponse(403, 'Forbidden')
-    }
-
-    // Check if schedule is active
-    if (!scheduleRes.rows[0].is_active) {
-      return errorResponse(400, 'Cannot mark attendance for inactive schedule')
-    }
-
-    const attendanceDate = date || new Date().toISOString().split('T')[0]
-
-    const client = await getPool().connect()
-    try {
-      await client.query('BEGIN')
-
-      if (status === 'completed') {
-        // Use atomic database function for completion (idempotent)
-        await client.query('SELECT mark_schedule_completed($1, $2)', [scheduleId, user.userId])
-      } else {
-        // Safe update for absent/warned (consistency trigger handles lesson_type)
-        await client.query(`
-          UPDATE student_schedules 
-          SET attendance_status = $1, attendance_date = $2, updated_at = CURRENT_TIMESTAMP
-          WHERE id = $3 AND is_active = TRUE
-        `, [status, attendanceDate, scheduleId])
-      }
-
-      await client.query('COMMIT')
-      return successResponse({ message: 'Attendance updated successfully' })
-    } catch (e) {
-      await client.query('ROLLBACK')
-      throw e
-    } finally {
-      client.release()
-    }
-  } catch (error) {
-    console.error('Mark attendance error:', error)
-    return errorResponse(500, 'Failed to mark attendance')
-  }
-}
 
 // Student analytics (date range, bucket=week|month)
 async function getStudentAttendanceAnalytics(event, user) {

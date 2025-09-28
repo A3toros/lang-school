@@ -2531,3 +2531,16 @@ COMMENT ON FUNCTION get_exhausted_packages IS 'Get all packages that have been e
 -- DELETE FROM student_packages WHERE id = 1;
 
 
+CREATE OR REPLACE FUNCTION get_week_start(input_date DATE)
+RETURNS DATE AS $$
+BEGIN
+  RETURN DATE_TRUNC('week', input_date)::date;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION get_current_week_start()
+RETURNS DATE AS $$
+BEGIN
+  RETURN get_week_start(CURRENT_DATE);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;

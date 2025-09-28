@@ -111,9 +111,10 @@ export const useSchedule = (teacherId = null) => {
       
       if (response.success) {
         // Update local schedule
+        // Let backend source of truth refresh the state; don’t set attendance_date optimistically
         setSchedule(prev => prev.map(item => 
           item.id === scheduleId 
-            ? { ...item, attendance_status: status, attendance_date: new Date().toISOString().split('T')[0] }
+            ? { ...item, attendance_status: status }
             : item
         ))
         return { success: true }
