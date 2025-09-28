@@ -141,7 +141,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
     }
   }
 
-  // Enhanced input functionality with debouncing
+  // Enhanced input functionality with smart filtering
   const filterStudents = (input) => {
     // Clear existing timeout
     if (autofillTimeout) {
@@ -158,38 +158,52 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       return
     }
     
-    const filtered = availableStudents.filter(student =>
-      student.name.toLowerCase().startsWith(input.toLowerCase().trim())
-    )
+    // Smart filtering with relevance scoring
+    const filtered = availableStudents
+      .map(student => ({
+        ...student,
+        score: getMatchScore(student.name, input)
+      }))
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
     
     setFilteredStudents(filtered)
     setShowSuggestions(true)
     
-    // Auto-fill if 3 or fewer students found - with debouncing
-    // Only show autofill if user has typed something (not empty input)
-    if (filtered.length <= 3 && filtered.length > 0 && input.trim().length > 0) {
+    // Show autofill tip only for single high-confidence matches
+    if (filtered.length === 1 && filtered[0].score >= 80 && input.trim().length > 0) {
       const firstStudent = filtered[0]
-      console.log('🎯 [AUTOFILL] Showing tip for:', firstStudent.name, 'Input:', input)
+      console.log('🎯 [AUTOFILL] Showing tip for single match:', firstStudent.name, 'Score:', firstStudent.score)
       setSelectedStudent(firstStudent)
       setShowSuggestions(false)
       setShowAutofillTip(true)
       setAutofillStudent(firstStudent)
       
-      // Hide tip after 5 seconds (increased from 3)
+      // Adaptive timeout based on match quality
+      const timeoutDuration = firstStudent.score >= 100 ? 8000 : 5000
       const timeout = setTimeout(() => {
         console.log('⏰ [AUTOFILL] Hiding tip after timeout')
         setShowAutofillTip(false)
         setAutofillStudent(null)
         setSelectedStudent(null)
-      }, 5000)
+      }, timeoutDuration)
       
       setAutofillTimeout(timeout)
     } else {
-      console.log('❌ [AUTOFILL] No tip - filtered.length:', filtered.length)
+      console.log('❌ [AUTOFILL] No tip - filtered.length:', filtered.length, 'topScore:', filtered[0]?.score)
       setShowAutofillTip(false)
       setAutofillStudent(null)
       setSelectedStudent(null)
     }
+  }
+
+  // Smart matching function
+  const getMatchScore = (name, input) => {
+    const n = name.toLowerCase()
+    const i = input.toLowerCase()
+    if (n.startsWith(i)) return 100
+    if (n.includes(i)) return 50
+    return 0
   }
 
   const handleStudentInputChange = (e) => {
@@ -729,10 +743,14 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
           />
           
           
-          {/* Autofill Tip - Minimalistic with Click Handler */}
+          {/* Enhanced Autofill Tip with Better UX */}
           {showAutofillTip && autofillStudent && (
-            <div 
-              className="absolute z-30 w-full mt-1 bg-blue-50 border border-blue-200 rounded shadow-sm px-2 py-1 cursor-pointer hover:bg-blue-100"
+            <motion.div 
+              initial={{ opacity: 0, y: -5, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -5, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="absolute z-50 w-full mt-1 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-lg px-3 py-2 cursor-pointer hover:from-blue-100 hover:to-indigo-100 hover:shadow-xl transition-all duration-200"
               onClick={() => {
                 console.log('🎯 [AUTOFILL_CLICK] Clicked autofill tip', {
                   selectedStudent,
@@ -753,27 +771,89 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
                   console.log('❌ [AUTOFILL_CLICK] No student available for scheduling')
                 }
               }}
+              role="button"
+              tabIndex={0}
+              aria-label={`Select ${autofillStudent.name} for this time slot`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  const studentToUse = selectedStudent || autofillStudent
+                  if (studentToUse) {
+                    handleAddStudentToSchedule(studentToUse, dayIndex, timeSlot)
+                    setEditingCell(null)
+                  }
+                } else if (e.key === 'Escape') {
+                  setShowAutofillTip(false)
+                  setAutofillStudent(null)
+                  setSelectedStudent(null)
+                }
+              }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs text-blue-700">
-                  <span className="font-medium">{autofillStudent.name}</span>
-                  <span className="text-blue-500 ml-1">• Press Enter or click</span>
-                </span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm text-blue-800">
+                    <span className="font-semibold">{autofillStudent.name}</span>
+                    <span className="text-blue-600 ml-2 text-xs">Press Enter or click to select</span>
+                  </span>
+                </div>
                 <button
                   onClick={(e) => {
-                    e.stopPropagation() // Prevent triggering parent click
+                    e.stopPropagation()
                     setShowAutofillTip(false)
                     setAutofillStudent(null)
                     setSelectedStudent(null)
                   }}
-                  className="text-blue-400 hover:text-blue-600 ml-2"
+                  className="text-blue-400 hover:text-blue-600 ml-2 p-1 rounded-full hover:bg-blue-100 transition-colors"
+                  aria-label="Dismiss suggestion"
                 >
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
               </div>
-            </div>
+            </motion.div>
+          )}
+
+          {/* Suggestions Dropdown for Multiple Matches */}
+          {showSuggestions && filteredStudents.length > 1 && filteredStudents.length <= 7 && (
+            <motion.div 
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+            >
+              {filteredStudents.map((student, index) => (
+                <div
+                  key={student.id}
+                  className="px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 flex items-center justify-between"
+                  onClick={() => {
+                    console.log('🎯 [SUGGESTION_CLICK] Selected student:', student.name)
+                    handleAddStudentToSchedule(student, dayIndex, timeSlot)
+                    setEditingCell(null)
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Select ${student.name} for this time slot`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleAddStudentToSchedule(student, dayIndex, timeSlot)
+                      setEditingCell(null)
+                    }
+                  }}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      student.score >= 100 ? 'bg-green-500' : 
+                      student.score >= 80 ? 'bg-blue-500' : 'bg-yellow-500'
+                    }`}></div>
+                    <span className="text-sm font-medium text-gray-800">{student.name}</span>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
           )}
         </div>
       )
