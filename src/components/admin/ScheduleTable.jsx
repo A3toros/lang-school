@@ -122,7 +122,7 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
       // Get ALL active students for scheduling (any teacher can schedule any student)
       const allStudentsResponse = await apiService.getStudents({ 
         status: 'active', 
-        limit: 100 
+        limit: 250 
       })
       
       console.log('📊 [FETCH_STUDENTS] All students response:', allStudentsResponse)
