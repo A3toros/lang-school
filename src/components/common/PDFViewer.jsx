@@ -16,27 +16,37 @@ function PDFViewer({ file, onClose }) {
   const [error, setError] = useState(null)
   const [useIframe, setUseIframe] = useState(false)
 
+  // Auto-fallback to iframe if PDF.js takes too long
+  React.useEffect(() => {
+    if (loading && !useIframe) {
+      const timer = setTimeout(() => {
+        console.log('⏰ [PDF_VIEWER] PDF.js taking too long, switching to iframe')
+        setUseIframe(true)
+        setLoading(false)
+        setError(null)
+      }, 3000) // 3 second timeout
+
+      return () => clearTimeout(timer)
+    }
+  }, [loading, useIframe])
+
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages)
     setLoading(false)
   }
 
   const onDocumentLoadError = (error) => {
-    console.error('❌ [PDF_VIEWER] Document load error:', error)
-    console.error('❌ [PDF_VIEWER] File URL was:', file.url)
-    console.error('❌ [PDF_VIEWER] Error details:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    })
-    
     // If PDF.js fails due to worker issues, try iframe fallback
-    if (error.message.includes('worker') || error.message.includes('fake worker')) {
-      console.log('🔄 [PDF_VIEWER] PDF.js failed, trying iframe fallback')
+    if (error.message.includes('worker') || 
+        error.message.includes('fake worker') || 
+        error.message.includes('pdf.worker.mjs') ||
+        error.message.includes('module specifier')) {
+      console.log('🔄 [PDF_VIEWER] PDF.js worker failed, switching to iframe (this is normal)')
       setUseIframe(true)
       setError(null)
       setLoading(false)
     } else {
+      console.error('❌ [PDF_VIEWER] Non-worker error:', error.message)
       setError(`Failed to load PDF: ${error.message}`)
       setLoading(false)
     }
@@ -67,13 +77,7 @@ function PDFViewer({ file, onClose }) {
       <div className="pdf-viewer-container">
         <div className="pdf-controls bg-gray-100 p-2 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">PDF Viewer (iframe)</span>
-            <button 
-              onClick={() => setUseIframe(false)}
-              className="btn-secondary text-sm"
-            >
-              Try PDF.js Again
-            </button>
+            <span className="text-sm text-gray-600">PDF Viewer</span>
           </div>
           <div className="flex items-center space-x-2">
             <button 
