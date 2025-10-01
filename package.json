@@ -19,6 +19,7 @@
     "generate-secrets": "node scripts/generate-secrets.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.58.0",
     "cloudinary": "^1.41.3",
     "dotenv": "^17.2.2",
     "formidable": "^3.5.4",
@@ -26,11 +27,13 @@
     "g": "^2.0.1",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.544.0",
-    "mammoth": "^1.10.0",
+    "mammoth": "^1.11.0",
     "netlify-cli": "^23.5.1",
+    "pdfjs-dist": "^5.4.149",
     "pg": "^8.11.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-p": "^1.1.6",
     "react-pdf": "^10.1.0",
     "react-router-dom": "^6.8.1",
     "x-data-spreadsheet": "^1.1.9",

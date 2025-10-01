@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import FolderTree from './FolderTree'
-import FileViewer from './FileViewer'
+import UniversalFileViewer from '../common/UniversalFileViewer'
 import { getFileIcon, formatFileSize } from '../../utils/fileTypes'
 
 const FileSharing = () => {
@@ -93,12 +93,42 @@ const FileSharing = () => {
     })
   }
 
-  const handleFileSelect = (file) => {
+  const handleFileSelect = async (file) => {
     console.log('📁 [FILE_SHARING] File selected for viewing:', file)
     console.log('📁 [FILE_SHARING] File cloudinary_url:', file.cloudinary_url)
-    console.log('📁 [FILE_SHARING] Setting selectedFile to:', file)
-    setSelectedFile(file)
-    console.log('📁 [FILE_SHARING] selectedFile state should be updated')
+    console.log('📁 [FILE_SHARING] File supabase_path:', file.supabase_path)
+    
+    try {
+      // For Supabase files, get a signed URL for viewing
+      if (file.supabase_path) {
+        console.log('📁 [FILE_SHARING] Getting signed URL for Supabase file')
+        const response = await apiService.getFileViewUrl(file.id)
+        console.log('📁 [FILE_SHARING] API response:', response)
+        
+        if (response.success) {
+          const fileWithUrl = {
+            ...file,
+            url: response.viewUrl,
+            display_name: response.fileName,
+            original_name: response.fileName
+          }
+          console.log('📁 [FILE_SHARING] Setting selectedFile with signed URL:', fileWithUrl)
+          setSelectedFile(fileWithUrl)
+        } else {
+          console.error('Failed to get file view URL:', response.error)
+          alert('Failed to load file preview: ' + response.error)
+          setSelectedFile(null)
+        }
+      } else {
+        // For Cloudinary files, use the existing URL
+        console.log('📁 [FILE_SHARING] Using Cloudinary URL for file')
+        setSelectedFile(file)
+      }
+    } catch (error) {
+      console.error('Failed to get file URL:', error)
+      alert('Failed to load file preview: ' + error.message)
+      setSelectedFile(null)
+    }
   }
 
   // Debug: Log files whenever they change
@@ -384,7 +414,7 @@ const FileSharing = () => {
                 console.log('📁 [FILE_SHARING] Rendering preview area, selectedFile:', selectedFile)
                 return selectedFile ? (
                   <div className="h-full">
-                    <FileViewer 
+                    <UniversalFileViewer 
                       file={selectedFile} 
                       isOpen={true} 
                       onClose={() => setSelectedFile(null)} 

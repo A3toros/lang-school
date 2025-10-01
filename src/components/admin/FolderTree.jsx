@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
-import cloudinaryService from '../../services/cloudinaryService'
+import supabaseFileService from '../../services/supabaseFileService'
 import { getFileType, getFileIcon, getAcceptedTypes, formatFileSize } from '../../utils/fileTypes'
 import { getFileIconComponent } from '../../utils/FileIconComponent'
 
@@ -288,44 +288,77 @@ const FolderTree = ({
     setSelectedFile(null)
   }
 
-  const handleFileDownload = async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    console.log('📁 [FOLDER_TREE] Download clicked for file:', selectedFile)
-    console.log('📁 [FOLDER_TREE] Event:', e)
-    console.log('📁 [FOLDER_TREE] Selected file ID:', selectedFile?.id)
-    
-    if (!selectedFile) {
-      console.error('📁 [FOLDER_TREE] No file selected')
-      alert('Error: No file selected')
-      handleFileMenuClose()
-      return
-    }
-    
-    try {
-      console.log('📁 [FOLDER_TREE] Starting download')
-      
-      // Use the public download endpoint which doesn't require authentication
-      const downloadUrl = `/api/files/${selectedFile.id}/download/public`
-      
-      console.log('📁 [FOLDER_TREE] Starting download with backend URL:', downloadUrl)
-      
-      // Create a temporary link element to trigger download
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      // Don't set download attribute or target - let browser handle it naturally
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
-      console.log('✅ [FOLDER_TREE] Download initiated successfully')
-    } catch (error) {
-      console.error('❌ [FOLDER_TREE] Download failed:', error)
-      alert('Download failed: ' + error.message)
-    }
-    
-    handleFileMenuClose()
-  }
+      const handleFileDownload = async (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        console.log('📁 [FOLDER_TREE] Download clicked for file:', selectedFile)
+        console.log('📁 [FOLDER_TREE] Event:', e)
+        console.log('📁 [FOLDER_TREE] Selected file ID:', selectedFile?.id)
+        
+        if (!selectedFile) {
+          console.error('📁 [FOLDER_TREE] No file selected')
+          alert('Error: No file selected')
+          handleFileMenuClose()
+          return
+        }
+        
+        try {
+          console.log('📁 [FOLDER_TREE] Starting download')
+          
+          let downloadUrl, fileName
+          
+          if (selectedFile.supabase_path) {
+            // For Supabase files, get the signed URL first
+            console.log('📁 [FOLDER_TREE] Getting signed URL for Supabase file')
+            const response = await apiService.downloadFile(selectedFile.id)
+            if (!response.success) {
+              throw new Error(response.error || 'Failed to get download URL')
+            }
+            downloadUrl = response.downloadUrl
+            fileName = response.fileName
+            console.log('📁 [FOLDER_TREE] Got signed URL:', downloadUrl.substring(0, 50) + '...')
+          } else {
+            // For Cloudinary files, use the existing URL
+            downloadUrl = selectedFile.cloudinary_url
+            fileName = selectedFile.display_name || selectedFile.original_name
+            console.log('📁 [FOLDER_TREE] Using Cloudinary URL:', downloadUrl.substring(0, 50) + '...')
+          }
+          
+          // Fetch the actual file content from the URL
+          console.log('📁 [FOLDER_TREE] Fetching file content from URL')
+          const fileResponse = await fetch(downloadUrl)
+          if (!fileResponse.ok) {
+            throw new Error(`Download failed: ${fileResponse.status} ${fileResponse.statusText}`)
+          }
+          
+          // Get the file blob
+          const blob = await fileResponse.blob()
+          console.log('📁 [FOLDER_TREE] File blob size:', blob.size, 'bytes')
+          
+          if (blob.size === 0) {
+            throw new Error('Downloaded file is empty')
+          }
+          
+          // Create a blob URL and trigger download
+          const blobUrl = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = blobUrl
+          link.download = fileName
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          
+          // Clean up the blob URL
+          URL.revokeObjectURL(blobUrl)
+          
+          console.log('✅ [FOLDER_TREE] Download initiated successfully')
+        } catch (error) {
+          console.error('❌ [FOLDER_TREE] Download failed:', error)
+          alert('Download failed: ' + error.message)
+        }
+        
+        handleFileMenuClose()
+      }
 
   const handleFileView = (e) => {
     e.preventDefault()
@@ -534,34 +567,30 @@ const FolderTree = ({
           continue
         }
 
-        // Upload to Cloudinary
-        const uploadResult = await cloudinaryService.uploadFile(file, 'lang-school/files')
+        // Upload to Supabase
+        const uploadResult = await supabaseFileService.uploadFile(file, currentFolderId)
 
-        if (uploadResult.success) {
-          // Save file metadata to database
-          const fileData = {
-            display_name: file.name,
-            original_name: file.name,
-            file_type: fileType,
-            file_size: file.size,
-            cloudinary_url: uploadResult.secureUrl,
-            cloudinary_public_id: uploadResult.publicId,
-            folder_id: currentFolderId
-          }
+        // Save file metadata to database
+        const fileData = {
+          display_name: file.name,
+          original_name: file.name,
+          file_type: fileType,
+          file_size: file.size,
+          supabase_path: uploadResult.path,
+          supabase_bucket: uploadResult.bucket,
+          content_type: uploadResult.contentType,
+          folder_id: currentFolderId
+        }
 
-          const response = await apiService.uploadFile(fileData)
-          if (response.success) {
-            console.log('✅ File uploaded successfully:', response.file)
-            if (onFileUpload) {
-              onFileUpload(response.file)
-            }
-          } else {
-            console.error('❌ Failed to save file metadata:', response.error)
-            alert(`Failed to save file "${file.name}": ${response.error}`)
+        const response = await apiService.uploadFile(fileData)
+        if (response.success) {
+          console.log('✅ File uploaded successfully:', response.file)
+          if (onFileUpload) {
+            onFileUpload(response.file)
           }
         } else {
-          console.error('❌ Cloudinary upload failed:', uploadResult.error)
-          alert(`Failed to upload file "${file.name}": ${uploadResult.error}`)
+          console.error('❌ Failed to save file metadata:', response.error)
+          alert(`Failed to save file "${file.name}": ${response.error}`)
         }
       }
     } catch (error) {

@@ -2180,6 +2180,86 @@ class ApiService {
     }
   }
 
+  // Supabase Files API methods
+  async uploadFile(fileData) {
+    apiDebugger.info('SUPABASE_FILES', 'Uploading file', { fileName: fileData.display_name })
+    
+    try {
+      const result = await this.makeRequest('/supabase-files/upload', {
+        method: 'POST',
+        body: JSON.stringify(fileData)
+      })
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'File uploaded successfully', { fileId: result.file?.id })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to upload file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error uploading file', { error: error.message })
+      throw error
+    }
+  }
+
+  async downloadFile(fileId) {
+    apiDebugger.info('SUPABASE_FILES', 'Downloading file', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/supabase-files/${fileId}/download`)
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'File download initiated', { fileId })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to download file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error downloading file', { error: error.message })
+      throw error
+    }
+  }
+
+  async getFileViewUrl(fileId) {
+    apiDebugger.info('SUPABASE_FILES', 'Getting file view URL', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/supabase-files/${fileId}/view`)
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'File view URL generated', { fileId })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to get file view URL', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error getting file view URL', { error: error.message })
+      throw error
+    }
+  }
+
+  async getPublicFiles(queryParams = '') {
+    apiDebugger.info('SUPABASE_FILES', 'Fetching public files', { queryParams })
+    
+    try {
+      const result = await this.makeRequest(`/supabase-files/public?${queryParams}`)
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'Public files fetched successfully', { count: result.files?.length || 0 })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to fetch public files', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error fetching public files', { error: error.message })
+      throw error
+    }
+  }
+
 }
 
 // Create and export a singleton instance

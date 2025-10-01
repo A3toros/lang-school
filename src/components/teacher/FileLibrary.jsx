@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
 import TeacherFolderTree from './TeacherFolderTree'
-import FileViewer from '../admin/FileViewer'
+import UniversalFileViewer from '../common/UniversalFileViewer'
 import { getFileIcon, formatFileSize } from '../../utils/fileTypes'
 import { getFileIconComponent } from '../../utils/FileIconComponent'
 
@@ -74,29 +74,62 @@ const FileLibrary = () => {
     })
   }
 
-  const handleDownloadFile = async (file) => {
-    try {
-      console.log('📁 [FILE_LIBRARY] Starting download for file:', file.id)
-      
-      // Use the public download endpoint directly
-      const downloadUrl = `/api/files/${file.id}/download/public`
-      
-      console.log('📁 [FILE_LIBRARY] Download URL:', downloadUrl)
-      
-      // Create a temporary link element to trigger download
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = file.display_name || file.original_name
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      
-      console.log('✅ [FILE_LIBRARY] Download initiated')
-    } catch (error) {
-      console.error('Error downloading file:', error)
-      alert('Failed to download file')
-    }
-  }
+        const handleDownloadFile = async (file) => {
+          try {
+            console.log('📁 [FILE_LIBRARY] Starting download for file:', file.id)
+            
+            let downloadUrl, fileName
+            
+            if (file.supabase_path) {
+              // For Supabase files, get the signed URL first
+              console.log('📁 [FILE_LIBRARY] Getting signed URL for Supabase file')
+              const response = await apiService.downloadFile(file.id)
+              if (!response.success) {
+                throw new Error(response.error || 'Failed to get download URL')
+              }
+              downloadUrl = response.downloadUrl
+              fileName = response.fileName
+              console.log('📁 [FILE_LIBRARY] Got signed URL:', downloadUrl.substring(0, 50) + '...')
+            } else {
+              // For Cloudinary files, use the existing URL
+              downloadUrl = file.cloudinary_url
+              fileName = file.display_name || file.original_name
+              console.log('📁 [FILE_LIBRARY] Using Cloudinary URL:', downloadUrl.substring(0, 50) + '...')
+            }
+            
+            // Fetch the actual file content from the URL
+            console.log('📁 [FILE_LIBRARY] Fetching file content from URL')
+            const fileResponse = await fetch(downloadUrl)
+            if (!fileResponse.ok) {
+              throw new Error(`Download failed: ${fileResponse.status} ${fileResponse.statusText}`)
+            }
+            
+            // Get the file blob
+            const blob = await fileResponse.blob()
+            console.log('📁 [FILE_LIBRARY] File blob size:', blob.size, 'bytes')
+            
+            if (blob.size === 0) {
+              throw new Error('Downloaded file is empty')
+            }
+            
+            // Create a blob URL and trigger download
+            const blobUrl = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = blobUrl
+            link.download = fileName
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            
+            // Clean up the blob URL
+            URL.revokeObjectURL(blobUrl)
+            
+            console.log('✅ [FILE_LIBRARY] Download initiated')
+          } catch (error) {
+            console.error('Error downloading file:', error)
+            alert('Failed to download file: ' + error.message)
+          }
+        }
 
   const handlePreviewFile = (file) => {
     setPreviewFile(file)
@@ -355,7 +388,7 @@ const FileLibrary = () => {
       </div>
 
       {/* File Viewer Modal */}
-      <FileViewer
+      <UniversalFileViewer
         file={previewFile}
         isOpen={showPreview}
         onClose={() => {
