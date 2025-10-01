@@ -488,9 +488,9 @@ async function deleteFile(event, user) {
 
     const fileId = parseInt(event.path.split('/')[3])
 
-    // Get file info for Cloudinary deletion
+    // Get file info for storage deletion
     const fileInfo = await query(
-      'SELECT cloudinary_public_id, display_name FROM shared_files WHERE id = $1 AND is_active = true',
+      'SELECT cloudinary_public_id, supabase_path, supabase_bucket, display_name FROM shared_files WHERE id = $1 AND is_active = true',
       [fileId]
     )
 
@@ -498,26 +498,50 @@ async function deleteFile(event, user) {
       return errorResponse(404, 'File not found')
     }
 
-    // Soft delete file
-    const queryText = `
-      UPDATE shared_files 
-      SET is_active = false, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
-      RETURNING *
-    `
-    
-    const result = await query(queryText, [fileId])
+    const file = fileInfo.rows[0]
 
-    console.log('✅ [FILES] File deleted successfully', {
-      fileId: result.rows[0].id,
-      displayName: result.rows[0].display_name,
-      cloudinaryPublicId: result.rows[0].cloudinary_public_id
-    })
+    // Route to appropriate delete handler based on storage type
+    if (file.supabase_path) {
+      // Supabase file - redirect to supabase-files endpoint
+      console.log('🔄 [FILES] Redirecting Supabase file deletion to supabase-files endpoint')
+      
+      // Import the supabase-files handler
+      const { handler: supabaseHandler } = require('./supabase-files.js')
+      
+      // Create a new event object for the supabase-files handler
+      const supabaseEvent = {
+        ...event,
+        path: `/api/supabase-files/${fileId}`,
+        httpMethod: 'DELETE'
+      }
+      
+      return await supabaseHandler(supabaseEvent, context)
+    } else {
+      // Cloudinary file - handle locally
+      console.log('🔄 [FILES] Handling Cloudinary file deletion locally')
+      
+      // Soft delete file
+      const queryText = `
+        UPDATE shared_files 
+        SET is_active = false, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `
+      
+      const result = await query(queryText, [fileId])
 
-    return successResponse({ 
-      message: 'File deleted successfully',
-      cloudinary_public_id: result.rows[0].cloudinary_public_id
-    })
+      console.log('✅ [FILES] Cloudinary file deleted successfully', {
+        fileId: result.rows[0].id,
+        displayName: result.rows[0].display_name,
+        cloudinaryPublicId: result.rows[0].cloudinary_public_id
+      })
+
+      return successResponse({ 
+        message: 'File deleted successfully',
+        storageType: 'cloudinary',
+        cloudinary_public_id: result.rows[0].cloudinary_public_id
+      })
+    }
   } catch (error) {
     console.error('❌ [FILES] Delete file error:', error)
     return errorResponse(500, 'Failed to delete file')

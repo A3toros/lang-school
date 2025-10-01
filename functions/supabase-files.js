@@ -58,6 +58,8 @@ const handler = async (event, context) => {
       return await getPublicFiles(event, user)
     } else if (path.match(/^\/api\/supabase-files\/\d+\/view$/) && method === 'GET') {
       return await getFileViewUrl(event, user)
+    } else if (path.match(/^\/api\/supabase-files\/\d+$/) && method === 'DELETE') {
+      return await deleteFile(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -430,6 +432,97 @@ async function downloadFilePublic(event, user) {
   } catch (error) {
     console.error('❌ [SUPABASE_FILES] Public download file error:', error)
     return errorResponse(500, 'Failed to download file')
+  }
+}
+
+// Delete file from Supabase storage and database
+async function deleteFile(event, user) {
+  console.log('🔍 [SUPABASE_FILES] deleteFile called', {
+    userId: user.userId,
+    role: user.role,
+    fileId: event.path.split('/')[3]
+  })
+
+  try {
+    if (user.role !== 'admin') {
+      console.log('❌ [SUPABASE_FILES] Delete file forbidden - not admin', { role: user.role })
+      return errorResponse(403, 'Forbidden')
+    }
+
+    const fileId = parseInt(event.path.split('/')[3])
+
+    // Get file info to check storage type
+    const fileInfo = await query(
+      'SELECT * FROM shared_files WHERE id = $1 AND is_active = true',
+      [fileId]
+    )
+
+    if (fileInfo.rows.length === 0) {
+      console.log('❌ [SUPABASE_FILES] Delete file not found:', { fileId })
+      return errorResponse(404, 'File not found')
+    }
+
+    const file = fileInfo.rows[0]
+
+    // Start transaction
+    await query('BEGIN')
+
+    try {
+      // Delete from Supabase storage if it's a Supabase file
+      if (file.supabase_path) {
+        console.log('🗑️ [SUPABASE_FILES] Deleting from Supabase storage:', {
+          fileId: file.id,
+          supabasePath: file.supabase_path,
+          bucket: file.supabase_bucket || 'files'
+        })
+
+        const { error: deleteError } = await supabase.storage
+          .from(file.supabase_bucket || 'files')
+          .remove([file.supabase_path])
+
+        if (deleteError) {
+          console.error('❌ [SUPABASE_FILES] Failed to delete from Supabase storage:', deleteError)
+          // Don't fail the entire operation if storage deletion fails
+          // The file might have already been deleted or moved
+        } else {
+          console.log('✅ [SUPABASE_FILES] Successfully deleted from Supabase storage')
+        }
+      } else {
+        console.log('ℹ️ [SUPABASE_FILES] File is not stored in Supabase, skipping storage deletion')
+      }
+
+      // Soft delete from database
+      const queryText = `
+        UPDATE shared_files 
+        SET is_active = false, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `
+      
+      const result = await query(queryText, [fileId])
+
+      // Commit transaction
+      await query('COMMIT')
+
+      console.log('✅ [SUPABASE_FILES] File deleted successfully', {
+        fileId: result.rows[0].id,
+        displayName: result.rows[0].display_name,
+        storageType: file.supabase_path ? 'supabase' : 'cloudinary'
+      })
+
+      return successResponse({ 
+        message: 'File deleted successfully',
+        storageType: file.supabase_path ? 'supabase' : 'cloudinary'
+      })
+
+    } catch (error) {
+      // Rollback transaction on error
+      await query('ROLLBACK')
+      throw error
+    }
+  } catch (error) {
+    console.error('❌ [SUPABASE_FILES] Delete file error:', error)
+    return errorResponse(500, 'Failed to delete file')
   }
 }
 
