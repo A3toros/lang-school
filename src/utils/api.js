@@ -2372,6 +2372,25 @@ class ApiService {
     }
   }
 
+  async downloadFilePublic(fileId) {
+    apiDebugger.info('SUPABASE_FILES', 'Downloading file (public)', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/supabase-files/${fileId}/download/public`)
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'Public file download initiated', { fileId })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to download public file', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error downloading public file', { error: error.message })
+      throw error
+    }
+  }
+
   async getFileViewUrl(fileId) {
     apiDebugger.info('SUPABASE_FILES', 'Getting file view URL', { fileId })
     
@@ -2387,6 +2406,25 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('SUPABASE_FILES', 'Error getting file view URL', { error: error.message })
+      throw error
+    }
+  }
+
+  async getFileViewUrlPublic(fileId) {
+    apiDebugger.info('SUPABASE_FILES', 'Getting public file view URL', { fileId })
+    
+    try {
+      const result = await this.makeRequest(`/supabase-files/${fileId}/view/public`)
+      
+      if (result.success) {
+        apiDebugger.success('SUPABASE_FILES', 'Public file view URL generated', { fileId })
+      } else {
+        apiDebugger.warning('SUPABASE_FILES', 'Failed to get public file view URL', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('SUPABASE_FILES', 'Error getting public file view URL', { error: error.message })
       throw error
     }
   }

@@ -38,6 +38,9 @@ const handler = async (event, context) => {
     } else if (path.match(/^\/api\/supabase-files\/\d+\/download\/public$/) && method === 'GET') {
       // Public file download - no authentication required
       isPublicEndpoint = true
+    } else if (path.match(/^\/api\/supabase-files\/\d+\/view\/public$/) && method === 'GET') {
+      // Public file view - no authentication required
+      isPublicEndpoint = true
     } else {
       // All other routes require authentication
       try {
@@ -54,6 +57,8 @@ const handler = async (event, context) => {
       return await downloadFile(event, user)
     } else if (path.match(/^\/api\/supabase-files\/\d+\/download\/public$/) && method === 'GET') {
       return await downloadFilePublic(event, user)
+    } else if (path.match(/^\/api\/supabase-files\/\d+\/view\/public$/) && method === 'GET') {
+      return await getFileViewUrlPublic(event, user)
     } else if (path === '/api/supabase-files/public' && method === 'GET') {
       return await getPublicFiles(event, user)
     } else if (path.match(/^\/api\/supabase-files\/\d+\/view$/) && method === 'GET') {
@@ -306,11 +311,71 @@ async function getFileViewUrl(event, user) {
   }
 }
 
+// Get file view URL (public access for teachers)
+async function getFileViewUrlPublic(event, user) {
+  console.log('🔍 [SUPABASE_FILES] getFileViewUrlPublic called', {
+    fileId: event.path.split('/')[3]
+  })
+
+  try {
+    const fileId = parseInt(event.path.split('/')[3])
+
+    // Get file info
+    const fileInfo = await query(
+      'SELECT * FROM shared_files WHERE id = $1 AND is_active = true',
+      [fileId]
+    )
+
+    if (fileInfo.rows.length === 0) {
+      return errorResponse(404, 'File not found')
+    }
+
+    const file = fileInfo.rows[0]
+
+    // Check if file is stored in Supabase or Cloudinary
+    let viewUrl
+    if (file.supabase_path) {
+      // Supabase file - generate signed URL for viewing
+      const { data, error } = await supabase.storage
+        .from(file.supabase_bucket || 'files')
+        .createSignedUrl(file.supabase_path, 3600)
+      
+      if (error) {
+        console.error('❌ [SUPABASE_FILES] Failed to create public view URL:', error)
+        return errorResponse(500, 'Failed to generate view URL')
+      }
+      
+      viewUrl = data.signedUrl
+    } else if (file.cloudinary_url) {
+      // Cloudinary file - use existing URL
+      viewUrl = file.cloudinary_url
+    } else {
+      return errorResponse(404, 'File storage not found')
+    }
+
+    console.log('✅ [SUPABASE_FILES] Public file view URL generated', {
+      fileId: file.id,
+      displayName: file.display_name,
+      storageType: file.supabase_path ? 'supabase' : 'cloudinary'
+    })
+
+    return successResponse({ 
+      viewUrl: viewUrl,
+      fileName: file.display_name,
+      fileType: file.file_type,
+      storageType: file.supabase_path ? 'supabase' : 'cloudinary'
+    })
+  } catch (error) {
+    console.error('❌ [SUPABASE_FILES] Get public view URL error:', error)
+    return errorResponse(500, 'Failed to get view URL')
+  }
+}
+
 // Get public files (for teachers)
 async function getPublicFiles(event, user) {
   console.log('🔍 [SUPABASE_FILES] getPublicFiles called', {
-    userId: user.userId,
-    role: user.role
+    userId: user?.userId || 'public',
+    role: user?.role || 'public'
   })
 
   try {

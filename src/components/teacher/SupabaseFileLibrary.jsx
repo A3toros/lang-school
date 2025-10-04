@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import UniversalFileViewer from '../common/UniversalFileViewer'
 import apiService from '../../utils/api'
+import { getFileIcon, formatFileSize } from '../../utils/fileTypes'
 
 function SupabaseFileLibrary() {
   const [files, setFiles] = useState([])
@@ -43,79 +44,100 @@ function SupabaseFileLibrary() {
   }
   
   const handleFileClick = async (file) => {
+    console.log('📁 [SUPABASE_FILE_LIBRARY] File selected for viewing:', file)
+    console.log('📁 [SUPABASE_FILE_LIBRARY] File cloudinary_url:', file.cloudinary_url)
+    console.log('📁 [SUPABASE_FILE_LIBRARY] File supabase_path:', file.supabase_path)
+    
     try {
-      // Get signed URL for viewing
-      const response = await apiService.getFileViewUrl(file.id)
-      if (response.success) {
-        setSelectedFile({ 
-          ...file, 
-          url: response.viewUrl,
-          display_name: response.fileName,
-          original_name: response.fileName
-        })
+      // For Supabase files, get a signed URL for viewing
+      if (file.supabase_path) {
+        console.log('📁 [SUPABASE_FILE_LIBRARY] Getting signed URL for Supabase file')
+        const response = await apiService.getFileViewUrlPublic(file.id)
+        console.log('📁 [SUPABASE_FILE_LIBRARY] API response:', response)
+        
+        if (response.success) {
+          const fileWithUrl = {
+            ...file,
+            url: response.viewUrl,
+            display_name: response.fileName,
+            original_name: response.fileName
+          }
+          console.log('📁 [SUPABASE_FILE_LIBRARY] Setting selectedFile with signed URL:', fileWithUrl)
+          setSelectedFile(fileWithUrl)
+        } else {
+          console.error('Failed to get file view URL:', response.error)
+          alert('Failed to load file preview: ' + response.error)
+          setSelectedFile(null)
+        }
       } else {
-        console.error('Failed to get file view URL:', response.error)
-        alert('Failed to load file preview')
+        // For Cloudinary files, use the existing URL
+        console.log('📁 [SUPABASE_FILE_LIBRARY] Using Cloudinary URL for file')
+        setSelectedFile(file)
       }
     } catch (error) {
       console.error('Failed to get file URL:', error)
-      alert('Failed to load file preview')
+      alert('Failed to load file preview: ' + error.message)
+      setSelectedFile(null)
     }
   }
   
   const handleDownload = async (file) => {
     try {
-      const response = await apiService.downloadFile(file.id)
-      if (response.success) {
-        // Fetch the file and trigger proper download
-        const downloadResponse = await fetch(response.downloadUrl)
-        if (!downloadResponse.ok) {
-          throw new Error(`Download failed: ${downloadResponse.status}`)
+      console.log('📁 [SUPABASE_FILE_LIBRARY] Starting download for file:', file.id)
+      
+      let downloadUrl, fileName
+      
+      if (file.supabase_path) {
+        // For Supabase files, get the signed URL first
+        console.log('📁 [SUPABASE_FILE_LIBRARY] Getting signed URL for Supabase file')
+        const response = await apiService.downloadFilePublic(file.id)
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to get download URL')
         }
-        
-        // Get the file blob
-        const blob = await downloadResponse.blob()
-        
-        // Create a blob URL and trigger download
-        const blobUrl = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = blobUrl
-        link.download = response.fileName
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        
-        // Clean up the blob URL
-        URL.revokeObjectURL(blobUrl)
+        downloadUrl = response.downloadUrl
+        fileName = response.fileName
+        console.log('📁 [SUPABASE_FILE_LIBRARY] Got signed URL:', downloadUrl.substring(0, 50) + '...')
       } else {
-        console.error('Download failed:', response.error)
-        alert('Download failed')
+        // For Cloudinary files, use the existing URL
+        downloadUrl = file.cloudinary_url
+        fileName = file.display_name || file.original_name
+        console.log('📁 [SUPABASE_FILE_LIBRARY] Using Cloudinary URL:', downloadUrl.substring(0, 50) + '...')
       }
+      
+      // Fetch the actual file content from the URL
+      console.log('📁 [SUPABASE_FILE_LIBRARY] Fetching file content from URL')
+      const fileResponse = await fetch(downloadUrl)
+      if (!fileResponse.ok) {
+        throw new Error(`Download failed: ${fileResponse.status} ${fileResponse.statusText}`)
+      }
+      
+      // Get the file blob
+      const blob = await fileResponse.blob()
+      console.log('📁 [SUPABASE_FILE_LIBRARY] File blob size:', blob.size, 'bytes')
+      
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty')
+      }
+      
+      // Create a blob URL and trigger download
+      const blobUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // Clean up the blob URL
+      URL.revokeObjectURL(blobUrl)
+      
+      console.log('✅ [SUPABASE_FILE_LIBRARY] Download initiated successfully')
     } catch (error) {
-      console.error('Download failed:', error)
-      alert('Download failed')
+      console.error('❌ [SUPABASE_FILE_LIBRARY] Download failed:', error)
+      alert('Download failed: ' + error.message)
     }
   }
   
-  const getFileIcon = (fileType) => {
-    const type = fileType?.toLowerCase() || ''
-    if (type.includes('pdf')) return '📄'
-    if (type.includes('word') || type.includes('doc')) return '📝'
-    if (type.includes('excel') || type.includes('sheet')) return '📊'
-    if (type.includes('powerpoint') || type.includes('presentation')) return '📽️'
-    if (type.includes('image')) return '🖼️'
-    if (type.includes('audio')) return '🎵'
-    if (type.includes('video')) return '🎬'
-    return '📁'
-  }
-  
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
   
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {

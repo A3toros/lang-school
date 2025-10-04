@@ -83,7 +83,7 @@ const FileLibrary = () => {
             if (file.supabase_path) {
               // For Supabase files, get the signed URL first
               console.log('📁 [FILE_LIBRARY] Getting signed URL for Supabase file')
-              const response = await apiService.downloadFile(file.id)
+              const response = await apiService.downloadFilePublic(file.id)
               if (!response.success) {
                 throw new Error(response.error || 'Failed to get download URL')
               }
@@ -131,9 +131,42 @@ const FileLibrary = () => {
           }
         }
 
-  const handlePreviewFile = (file) => {
-    setPreviewFile(file)
-    setShowPreview(true)
+  const handlePreviewFile = async (file) => {
+    console.log('📁 [FILE_LIBRARY] File selected for viewing:', file)
+    console.log('📁 [FILE_LIBRARY] File cloudinary_url:', file.cloudinary_url)
+    console.log('📁 [FILE_LIBRARY] File supabase_path:', file.supabase_path)
+    
+    try {
+      // For Supabase files, get a signed URL for viewing
+      if (file.supabase_path) {
+        console.log('📁 [FILE_LIBRARY] Getting signed URL for Supabase file')
+        const response = await apiService.getFileViewUrlPublic(file.id)
+        console.log('📁 [FILE_LIBRARY] API response:', response)
+        
+        if (response.success) {
+          const fileWithUrl = {
+            ...file,
+            url: response.viewUrl,
+            display_name: response.fileName,
+            original_name: response.fileName
+          }
+          console.log('📁 [FILE_LIBRARY] Setting previewFile with signed URL:', fileWithUrl)
+          setPreviewFile(fileWithUrl)
+          setShowPreview(true)
+        } else {
+          console.error('Failed to get file view URL:', response.error)
+          alert('Failed to load file preview: ' + response.error)
+        }
+      } else {
+        // For Cloudinary files, use the existing URL
+        console.log('📁 [FILE_LIBRARY] Using Cloudinary URL for file')
+        setPreviewFile(file)
+        setShowPreview(true)
+      }
+    } catch (error) {
+      console.error('Failed to get file URL:', error)
+      alert('Failed to load file preview: ' + error.message)
+    }
   }
 
   const filteredFiles = files.filter(file => {
