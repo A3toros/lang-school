@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import apiService from '../../utils/api'
+import StudentLevelBadge from '../common/StudentLevelBadge'
 
 const LessonReportForm = ({ 
   teacherId, 
@@ -92,7 +93,12 @@ const LessonReportForm = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="font-medium text-neutral-600">Student:</span>
-                  <p className="text-neutral-800">{student.name}</p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-neutral-800">{student.name}</p>
+                    {student.student_level && (
+                      <StudentLevelBadge level={student.student_level} size="xs" />
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="font-medium text-neutral-600">Date:</span>

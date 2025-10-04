@@ -504,9 +504,11 @@ class ApiService {
   }
 
   async getTeacher(teacherId) {
-    return this.fetchWithCache(`/teachers/${teacherId}`, { method: 'GET' }, { 
+    // Add cache-busting parameter to force fresh data
+    const url = `/teachers/${teacherId}?_t=${Date.now()}`
+    return this.fetchWithCache(url, { method: 'GET' }, { 
       resource: 'teacher', 
-      cacheKey: teacherId 
+      cacheKey: `${teacherId}-${Date.now()}` 
     })
   }
 
@@ -553,9 +555,11 @@ class ApiService {
   }
 
   async getTeacherStudents(teacherId) {
-    return this.fetchWithCache(`/teachers/${teacherId}/students`, { method: 'GET' }, { 
+    // Add cache-busting parameter to force fresh data
+    const url = `/teachers/${teacherId}/students?_t=${Date.now()}`
+    return this.fetchWithCache(url, { method: 'GET' }, { 
       resource: 'teachers', 
-      cacheKey: `students-${teacherId}` 
+      cacheKey: `students-${teacherId}-${Date.now()}` 
     })
   }
 
@@ -761,6 +765,28 @@ class ApiService {
 
   async getStudentsByTeacher(teacherId) {
     return this.makeRequest(`/students/teacher/${teacherId}`)
+  }
+
+  async getCurrentStudents(teacherId) {
+    apiDebugger.info('STUDENTS', 'Fetching current students for teacher', { teacherId })
+    
+    try {
+      const result = await this.makeRequest(`/students/teacher/${teacherId}/current`)
+      
+      if (result.success) {
+        apiDebugger.success('STUDENTS', 'Current students fetched successfully', { 
+          count: result.students?.length || 0,
+          teacherId 
+        })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to fetch current students', { error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error fetching current students', { error: error.message })
+      throw error
+    }
   }
 
   async getInactiveStudents() {
@@ -1226,6 +1252,8 @@ class ApiService {
           params.append(key, value)
         }
       })
+      // Add cache-busting parameter to force fresh data
+      params.append('_t', Date.now())
       
       const queryString = params.toString()
       const result = await this.fetchWithCache(`/students${queryString ? `?${queryString}` : ''}`, { method: 'GET' }, { resource: 'students', cacheKey: queryString })
@@ -1358,6 +1386,128 @@ class ApiService {
       return result
     } catch (error) {
       apiDebugger.error('STUDENTS', 'Error updating student', { studentId, error: error.message })
+      throw error
+    }
+  }
+
+  async getStudentLevel(studentId) {
+    apiDebugger.info('STUDENTS', 'Fetching student level', { studentId })
+    
+    // Check cache first
+    const cache = await dataCachePromise
+    const cacheKey = `student-level:${studentId}`
+    const cached = await cache.get(cacheKey)
+    
+    if (cached) {
+      apiDebugger.debug('STUDENTS', 'Student level found in cache', { studentId, level: cached.student_level })
+      return cached
+    }
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}/level`)
+      
+      if (result.success) {
+        // Cache for 5 minutes (300000 ms)
+        await cache.set(cacheKey, result.student, 300000)
+        apiDebugger.success('STUDENTS', 'Student level fetched and cached', { studentId, level: result.student.student_level })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to fetch student level', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error fetching student level', { studentId, error: error.message })
+      throw error
+    }
+  }
+
+  async updateStudentLevel(studentId, studentLevel) {
+    apiDebugger.info('STUDENTS', 'Updating student level', { studentId, studentLevel })
+    
+    try {
+      const result = await this.makeRequest(`/students/${studentId}/level`, {
+        method: 'PUT',
+        body: JSON.stringify({ student_level: studentLevel })
+      })
+      
+      if (result.success) {
+        // Update cache with new level
+        const cache = await dataCachePromise
+        const cacheKey = `student-level:${studentId}`
+        await cache.set(cacheKey, result.student, 300000) // 5 minutes TTL
+        
+        // Also invalidate student list cache to refresh the UI
+        await this.invalidateListCache('students')
+        
+        apiDebugger.success('STUDENTS', 'Student level updated successfully', { studentId, studentLevel })
+      } else {
+        apiDebugger.warning('STUDENTS', 'Failed to update student level', { studentId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('STUDENTS', 'Error updating student level', { studentId, error: error.message })
+      throw error
+    }
+  }
+
+  async getTeacherLevel(teacherId) {
+    apiDebugger.info('TEACHERS', 'Fetching teacher level', { teacherId })
+    
+    // Check cache first
+    const cache = await dataCachePromise
+    const cacheKey = `teacher-level:${teacherId}`
+    const cached = await cache.get(cacheKey)
+    
+    if (cached) {
+      apiDebugger.debug('TEACHERS', 'Teacher level found in cache', { teacherId, level: cached.teacher_level })
+      return cached
+    }
+    
+    try {
+      const result = await this.makeRequest(`/teachers/${teacherId}/level`)
+      
+      if (result.success) {
+        // Cache for 5 minutes (300000 ms)
+        await cache.set(cacheKey, result.teacher, 300000)
+        apiDebugger.success('TEACHERS', 'Teacher level fetched and cached', { teacherId, level: result.teacher.teacher_level })
+      } else {
+        apiDebugger.warning('TEACHERS', 'Failed to fetch teacher level', { teacherId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHERS', 'Error fetching teacher level', { teacherId, error: error.message })
+      throw error
+    }
+  }
+
+  async updateTeacherLevel(teacherId, teacherLevel) {
+    apiDebugger.info('TEACHERS', 'Updating teacher level', { teacherId, teacherLevel })
+    
+    try {
+      const result = await this.makeRequest(`/teachers/${teacherId}/level`, {
+        method: 'PUT',
+        body: JSON.stringify({ teacher_level: teacherLevel })
+      })
+      
+      if (result.success) {
+        // Update cache with new level
+        const cache = await dataCachePromise
+        const cacheKey = `teacher-level:${teacherId}`
+        await cache.set(cacheKey, result.teacher, 300000) // 5 minutes TTL
+        
+        // Also invalidate teacher list cache to refresh the UI
+        await this.invalidateListCache('teachers')
+        
+        apiDebugger.success('TEACHERS', 'Teacher level updated successfully', { teacherId, teacherLevel })
+      } else {
+        apiDebugger.warning('TEACHERS', 'Failed to update teacher level', { teacherId, error: result.error })
+      }
+      
+      return result
+    } catch (error) {
+      apiDebugger.error('TEACHERS', 'Error updating teacher level', { teacherId, error: error.message })
       throw error
     }
   }

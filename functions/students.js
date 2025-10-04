@@ -78,6 +78,10 @@ exports.handler = async (event, context) => {
       return await deleteStudentPackage(event, user)
     } else if (path === '/api/students/packages/exhausted' && method === 'GET') {
       return await getExhaustedPackages(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/level$/) && method === 'GET') {
+      return await getStudentLevel(event, user)
+    } else if (path.match(/^\/api\/students\/\d+\/level$/) && method === 'PUT') {
+      return await updateStudentLevel(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -314,19 +318,24 @@ async function createStudent(event, user) {
       return errorResponse(403, 'Forbidden')
     }
 
-    const { name, lessons_per_week } = JSON.parse(event.body)
+    const { name, lessons_per_week, student_level } = JSON.parse(event.body)
 
     if (!name) {
       return errorResponse(400, 'Name is required')
     }
 
+    // Validate student_level if provided
+    if (student_level && !['A1', 'A1+', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(student_level)) {
+      return errorResponse(400, 'Invalid student level')
+    }
+
     const queryText = `
-      INSERT INTO students (name, lessons_per_week, added_date)
-      VALUES ($1, $2, CURRENT_DATE)
+      INSERT INTO students (name, lessons_per_week, student_level, added_date)
+      VALUES ($1, $2, $3, CURRENT_DATE)
       RETURNING *
     `
     
-    const result = await query(queryText, [name, lessons_per_week || 1])
+    const result = await query(queryText, [name, lessons_per_week || 1, student_level])
     return successResponse({ student: result.rows[0] }, 201)
   } catch (error) {
     console.error('Create student error:', error)
@@ -338,7 +347,12 @@ async function createStudent(event, user) {
 async function updateStudent(event, user) {
   try {
     const studentId = parseInt(event.path.split('/')[3])
-    const { name, teacher_id, lessons_per_week, is_active } = JSON.parse(event.body)
+    const { name, teacher_id, lessons_per_week, is_active, student_level } = JSON.parse(event.body)
+
+    // Validate student_level if provided
+    if (student_level && !['A1', 'A1+', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(student_level)) {
+      return errorResponse(400, 'Invalid student level')
+    }
 
     // Check permissions - teachers can only update their own students
     if (user.role === 'teacher') {
@@ -362,11 +376,11 @@ async function updateStudent(event, user) {
         // Deactivating student - remove from teacher assignment
         const queryText = `
           UPDATE students 
-          SET name = $1, teacher_id = NULL, lessons_per_week = $2, is_active = false, updated_at = CURRENT_TIMESTAMP
-          WHERE id = $3
+          SET name = $1, teacher_id = NULL, lessons_per_week = $2, student_level = $3, is_active = false, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4
           RETURNING *
         `
-        const result = await query(queryText, [name, lessons_per_week, studentId])
+        const result = await query(queryText, [name, lessons_per_week, student_level, studentId])
         
         if (result.rows.length === 0) {
           return errorResponse(404, 'Student not found')
@@ -377,11 +391,11 @@ async function updateStudent(event, user) {
         // Reactivating student - allow NULL teacher assignment
         const queryText = `
           UPDATE students 
-          SET name = $1, teacher_id = $2, lessons_per_week = $3, is_active = true, updated_at = CURRENT_TIMESTAMP
-          WHERE id = $4
+          SET name = $1, teacher_id = $2, lessons_per_week = $3, student_level = $4, is_active = true, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $5
           RETURNING *
         `
-        const result = await query(queryText, [name, teacher_id, lessons_per_week, studentId])
+        const result = await query(queryText, [name, teacher_id, lessons_per_week, student_level, studentId])
         
         if (result.rows.length === 0) {
           return errorResponse(404, 'Student not found')
@@ -394,12 +408,12 @@ async function updateStudent(event, user) {
     // Regular update (no status change)
     const queryText = `
       UPDATE students 
-      SET name = $1, teacher_id = $2, lessons_per_week = $3, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4 AND is_active = true
+      SET name = $1, teacher_id = $2, lessons_per_week = $3, student_level = $4, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5 AND is_active = true
       RETURNING *
     `
     
-    const result = await query(queryText, [name, teacher_id, lessons_per_week, studentId])
+    const result = await query(queryText, [name, teacher_id, lessons_per_week, student_level, studentId])
     
     if (result.rows.length === 0) {
       return errorResponse(404, 'Student not found')
@@ -1173,7 +1187,7 @@ async function getCurrentStudents(event, user) {
       JOIN student_teachers st ON s.id = st.student_id
       LEFT JOIN student_schedules ss ON s.id = ss.student_id AND ss.teacher_id = $1
       WHERE st.teacher_id = $1 AND st.is_active = true AND s.is_active = true
-      GROUP BY s.id, st.assigned_date
+      GROUP BY s.id, st.assigned_date, s.student_level
       ORDER BY st.assigned_date DESC, s.name ASC
     `
     
@@ -1228,20 +1242,22 @@ async function getStudentMonthlyLessons(event, user) {
 
     console.log(`🔍 [GET_STUDENT_MONTHLY_LESSONS] Fetching lessons for ${year}-${month}`)
 
+    // Filter by actual lesson date: use attendance_date if set, else derive from week_start_date + day_of_week
     const queryText = `
       SELECT 
-        ws.student_id,
-        ws.student_name,
-        ws.week_start_date::text,
-        COUNT(CASE WHEN ws.attendance_status = 'completed' THEN 1 END) as completed_lessons,
-        COUNT(CASE WHEN ws.attendance_status = 'absent' THEN 1 END) as absent_lessons,
-        COUNT(CASE WHEN ws.attendance_status IN ('completed', 'absent') THEN 1 END) as total_lessons
-      FROM weekly_schedule ws
-      WHERE EXTRACT(YEAR FROM ws.week_start_date) = $1 
-        AND EXTRACT(MONTH FROM ws.week_start_date) = $2
-        AND ws.attendance_status IN ('completed', 'absent')
-      GROUP BY ws.student_id, ws.student_name, ws.week_start_date
-      ORDER BY ws.student_id, ws.week_start_date
+        ss.student_id,
+        s.name as student_name,
+        ss.week_start_date::text,
+        COUNT(CASE WHEN ss.attendance_status = 'completed' THEN 1 END) as completed_lessons,
+        COUNT(CASE WHEN ss.attendance_status = 'absent' THEN 1 END) as absent_lessons,
+        COUNT(CASE WHEN ss.attendance_status IN ('completed', 'absent') THEN 1 END) as total_lessons
+      FROM student_schedules ss
+      JOIN students s ON ss.student_id = s.id
+      WHERE EXTRACT(YEAR FROM COALESCE(ss.attendance_date, schedule_lesson_date(ss.week_start_date, ss.day_of_week))) = $1 
+        AND EXTRACT(MONTH FROM COALESCE(ss.attendance_date, schedule_lesson_date(ss.week_start_date, ss.day_of_week))) = $2
+        AND ss.attendance_status IN ('completed', 'absent')
+      GROUP BY ss.student_id, s.name, ss.week_start_date
+      ORDER BY ss.student_id, ss.week_start_date
     `
     
     const result = await query(queryText, [parseInt(year), parseInt(month)])
@@ -1530,6 +1546,112 @@ async function getExhaustedPackages(event, user) {
   } catch (error) {
     console.error('Get exhausted packages error:', error)
     return errorResponse(500, 'Failed to fetch exhausted packages')
+  }
+}
+
+// Get student level
+async function getStudentLevel(event, user) {
+  try {
+    console.log('GetStudentLevel called with:', { path: event.path, user: user.role })
+    const studentId = parseInt(event.path.split('/')[3])
+    
+    console.log('Parsed studentId:', studentId)
+    
+    const queryText = `
+      SELECT s.id, s.name, s.student_level
+      FROM students s
+      WHERE s.id = $1 AND s.is_active = true
+    `
+    const result = await query(queryText, [studentId])
+    
+    if (result.rows.length === 0) {
+      return errorResponse(404, 'Student not found')
+    }
+    
+    if (user.role === 'teacher') {
+      const teacherCheckQuery = `
+        SELECT st.id FROM student_teachers st
+        WHERE st.student_id = $1 AND st.teacher_id = $2 AND st.is_active = true
+      `
+      const teacherCheckResult = await query(teacherCheckQuery, [studentId, user.teacherId])
+      
+      if (teacherCheckResult.rows.length === 0) {
+        return errorResponse(403, 'Forbidden')
+      }
+    }
+    
+    return successResponse({
+      student: result.rows[0],
+      message: 'Student level retrieved successfully'
+    })
+  } catch (error) {
+    console.error('Get student level error:', error)
+    return errorResponse(500, 'Failed to get student level')
+  }
+}
+
+// Update student level
+async function updateStudentLevel(event, user) {
+  try {
+    console.log('UpdateStudentLevel called with:', { path: event.path, body: event.body, user: user.role })
+    
+    const studentId = parseInt(event.path.split('/')[3])
+    const { student_level } = JSON.parse(event.body)
+    
+    console.log('Parsed data:', { studentId, student_level })
+
+    // Validate student_level
+    const validLevels = ['A1', 'A1+', 'A2', 'B1', 'B2', 'C1', 'C2']
+    if (student_level && !validLevels.includes(student_level)) {
+      console.log('Invalid student level:', student_level)
+      return errorResponse(400, 'Invalid student level')
+    }
+
+    // Check if student exists and user has permission
+    const checkQuery = `
+      SELECT s.id, s.name, s.student_level
+      FROM students s
+      WHERE s.id = $1 AND s.is_active = true
+    `
+    const checkResult = await query(checkQuery, [studentId])
+    
+    if (checkResult.rows.length === 0) {
+      return errorResponse(404, 'Student not found')
+    }
+
+    // Check permissions
+    if (user.role === 'teacher') {
+      // Check if teacher is assigned to this student
+      const teacherCheckQuery = `
+        SELECT st.id FROM student_teachers st
+        WHERE st.student_id = $1 AND st.teacher_id = $2 AND st.is_active = true
+      `
+      const teacherCheckResult = await query(teacherCheckQuery, [studentId, user.teacherId])
+      
+      if (teacherCheckResult.rows.length === 0) {
+        return errorResponse(403, 'Forbidden')
+      }
+    }
+
+    // Update student level
+    const updateQuery = `
+      UPDATE students 
+      SET student_level = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+    `
+    
+    console.log('Executing update query:', updateQuery, [student_level, studentId])
+    const result = await query(updateQuery, [student_level, studentId])
+    console.log('Update result:', result.rows)
+    
+    return successResponse({ 
+      student: result.rows[0],
+      message: 'Student level updated successfully'
+    })
+  } catch (error) {
+    console.error('Update student level error:', error)
+    return errorResponse(500, 'Failed to update student level')
   }
 }
 

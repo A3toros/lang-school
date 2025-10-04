@@ -6,6 +6,8 @@ import { getCurrentWeekStart, getWeekEnd, getWeekStart, getWeekDates, formatDate
 import FileLibrary from '../components/teacher/FileLibrary'
 import LoadingSpinnerModal from '../components/common/LoadingSpinnerModal'
 import SuccessNotification from '../components/common/SuccessNotification'
+import StudentLevelBadge from '../components/common/StudentLevelBadge'
+import TeacherStudentsTab from '../components/teacher/TeacherStudentsTab'
 
 function getMonday(date) {
   const d = new Date(date);
@@ -527,6 +529,7 @@ const TeacherPage = () => {
         <div className="flex space-x-1 sm:space-x-2 mb-3 sm:mb-4 md:mb-6 overflow-x-auto">
           {[
             { id: 'schedule', label: 'Schedule', shortLabel: 'Schedule' },
+            { id: 'students', label: 'Students', shortLabel: 'Students' },
             { id: 'files', label: 'Folder', shortLabel: 'Folder' }
           ].map((tab) => (
             <button
@@ -991,6 +994,16 @@ const TeacherPage = () => {
           </>
         )}
 
+        {activeTab === 'students' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <TeacherStudentsTab teacherId={user.teacherId} />
+          </motion.div>
+        )}
+
         {activeTab === 'files' && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -1012,6 +1025,11 @@ const TeacherPage = () => {
             >
               <h3 className="text-lg font-semibold mb-4">
                 Complete Lesson - {selectedStudent?.name}
+                {selectedStudent?.student_level && (
+                  <div className="mt-2">
+                    <StudentLevelBadge level={selectedStudent.student_level} size="sm" />
+                  </div>
+                )}
               </h3>
               <div className="space-y-4">
                 <div>
@@ -1131,7 +1149,12 @@ const TeacherPage = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-600">Student</label>
-                      <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                        {selectedReport.student_level && (
+                          <StudentLevelBadge level={selectedReport.student_level} />
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-600">Time Slot</label>

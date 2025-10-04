@@ -67,7 +67,7 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
-    port: 5175, // Port for Netlify dev to proxy to
+    port: 5174, // Port for Netlify dev to proxy to
     host: true,
     strictPort: true
   },

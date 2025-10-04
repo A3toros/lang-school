@@ -7,7 +7,7 @@
   functions = "functions"
   publish = "dist"
   port = 3000
-  targetPort = 5175
+  targetPort = 5174
 
 [[redirects]]
   from = "/api/*"

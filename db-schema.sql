@@ -17,6 +17,7 @@ CREATE TABLE teachers (
     photo_url VARCHAR(500), -- Cloudinary URL (longer for CDN URLs)
     photo_public_id VARCHAR(255), -- Cloudinary public_id for deletion
     description TEXT,
+    teacher_level VARCHAR(10) DEFAULT NULL, -- Added teacher level column
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -28,6 +29,7 @@ CREATE TABLE students (
     name VARCHAR(100) NOT NULL,
     teacher_id INTEGER REFERENCES teachers(id) ON DELETE CASCADE,
     lessons_per_week INTEGER DEFAULT 0 CHECK (lessons_per_week >= 0),
+    student_level VARCHAR(10) DEFAULT NULL,
     added_date DATE NOT NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -922,6 +924,12 @@ WHERE is_primary = true;
 -- Add primary teacher reference
 ALTER TABLE students ADD COLUMN primary_teacher_id INTEGER REFERENCES teachers(id);
 ALTER TABLE students ADD COLUMN teacher_count INTEGER DEFAULT 0;
+
+-- Add student level index (no constraint to avoid plus sign issues)
+CREATE INDEX idx_students_student_level ON students(student_level);
+
+-- Add teacher level index
+CREATE INDEX idx_teachers_teacher_level ON teachers(teacher_level);
 
 -- Add primary teacher reference to schedules
 ALTER TABLE student_schedules ADD COLUMN primary_teacher_id INTEGER REFERENCES teachers(id);
@@ -2569,3 +2577,11 @@ CREATE INDEX IF NOT EXISTS idx_shared_files_supabase_path ON shared_files(supaba
 
 -- Create index for content type filtering
 CREATE INDEX IF NOT EXISTS idx_shared_files_content_type ON shared_files(content_type);
+
+ALTER TABLE students 
+ADD COLUMN student_level VARCHAR(10) DEFAULT NULL;
+
+
+
+-- Add index for performance
+CREATE INDEX idx_students_student_level ON students(student_level);

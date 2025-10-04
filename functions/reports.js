@@ -652,7 +652,7 @@ async function getWeeklyReports(event, user) {
     })
 
     let queryText = `
-      SELECT lr.*, s.name as student_name, t.name as teacher_name
+      SELECT lr.*, s.name as student_name, s.student_level, t.name as teacher_name
       FROM lesson_reports lr
       JOIN students s ON lr.student_id = s.id
       JOIN teachers t ON lr.teacher_id = t.id
@@ -710,7 +710,7 @@ async function getMonthlyReports(event, user) {
     console.log('📋 [REPORTS] Monthly reports parameters', { year, month })
 
     let queryText = `
-      SELECT lr.*, s.name as student_name, t.name as teacher_name
+      SELECT lr.*, s.name as student_name, s.student_level, t.name as teacher_name
       FROM lesson_reports lr
       JOIN students s ON lr.student_id = s.id
       JOIN teachers t ON lr.teacher_id = t.id

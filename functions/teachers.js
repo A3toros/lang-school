@@ -73,6 +73,10 @@ exports.handler = async (event, context) => {
       return await uploadTeacherPhoto(event, user)
     } else if (path === '/api/teachers/bulk-update' && method === 'POST') {
       return await bulkUpdateTeachers(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/level$/) && method === 'GET') {
+      return await getTeacherLevel(event, user)
+    } else if (path.match(/^\/api\/teachers\/\d+\/level$/) && method === 'PUT') {
+      return await updateTeacherLevel(event, user)
     } else {
       return errorResponse(404, 'Not found')
     }
@@ -619,7 +623,7 @@ async function getTeacherSchedule(event, user) {
     if (include_history === 'true') {
       // Historical data
       queryText = `
-        SELECT ss.*, s.name as student_name, s.id as student_id,
+        SELECT ss.*, s.name as student_name, s.id as student_id, s.student_level,
                CASE WHEN ss.attendance_status = 'completed' THEN 'completed'
                     WHEN ss.attendance_status = 'absent' THEN 'absent'
                     WHEN ss.attendance_status = 'absent_warned' THEN 'absent_warned'
@@ -636,7 +640,7 @@ async function getTeacherSchedule(event, user) {
           // If specific week requested, show that week; otherwise show all upcoming
           if (week_start) {
             queryText = `
-              SELECT ss.id, s.id as student_id, s.name as student_name, 
+              SELECT ss.id, s.id as student_id, s.name as student_name, s.student_level,
                      t.id as teacher_id, t.name as teacher_name,
                      ss.day_of_week, ss.time_slot, ss.week_start_date::text,
                      ss.attendance_status, ss.lesson_type,
@@ -763,20 +767,21 @@ async function getMonthlyLessonStats(event, user) {
       return errorResponse(400, 'Month and year parameters are required')
     }
 
-    // Get all lesson statistics for the specified month, grouped by teacher and week
+    // Filter by actual lesson date: use attendance_date if set, else derive from week_start_date + day_of_week
     const queryText = `
       SELECT 
-        ls.teacher_id,
+        ss.teacher_id,
         t.name as teacher_name,
-        ls.week_start_date::text,
-        SUM(ls.completed_lessons) as completed_lessons,
-        SUM(ls.absent_lessons) as absent_lessons
-      FROM lesson_statistics ls
-      JOIN teachers t ON ls.teacher_id = t.id
-      WHERE EXTRACT(YEAR FROM ls.week_start_date) = $1 
-        AND EXTRACT(MONTH FROM ls.week_start_date) = $2
-      GROUP BY ls.teacher_id, t.name, ls.week_start_date
-      ORDER BY ls.teacher_id, ls.week_start_date
+        ss.week_start_date::text,
+        SUM(CASE WHEN ss.attendance_status = 'completed' THEN 1 ELSE 0 END) as completed_lessons,
+        SUM(CASE WHEN ss.attendance_status = 'absent' THEN 1 ELSE 0 END) as absent_lessons
+      FROM student_schedules ss
+      JOIN teachers t ON ss.teacher_id = t.id
+      WHERE ss.attendance_status IN ('completed', 'absent', 'absent_warned')
+        AND EXTRACT(YEAR FROM COALESCE(ss.attendance_date, schedule_lesson_date(ss.week_start_date, ss.day_of_week))) = $1
+        AND EXTRACT(MONTH FROM COALESCE(ss.attendance_date, schedule_lesson_date(ss.week_start_date, ss.day_of_week))) = $2
+      GROUP BY ss.teacher_id, t.name, ss.week_start_date
+      ORDER BY ss.teacher_id, ss.week_start_date
     `
     
     const result = await query(queryText, [parseInt(year), parseInt(month)])
@@ -1132,5 +1137,81 @@ async function bulkUpdateTeachers(event, user) {
   } catch (error) {
     console.error('Bulk update teachers error:', error)
     return errorResponse(500, 'Failed to bulk update teachers')
+  }
+}
+
+// Get teacher level
+async function getTeacherLevel(event, user) {
+  try {
+    console.log('GetTeacherLevel called with:', { path: event.path, user: user.role })
+    const teacherId = parseInt(event.path.split('/')[3])
+    
+    console.log('Parsed teacherId:', teacherId)
+    
+    const queryText = `
+      SELECT t.id, t.name, t.teacher_level
+      FROM teachers t
+      WHERE t.id = $1 AND t.is_active = true
+    `
+    const result = await query(queryText, [teacherId])
+    
+    if (result.rows.length === 0) {
+      return errorResponse(404, 'Teacher not found')
+    }
+    
+    return successResponse({
+      teacher: result.rows[0],
+      message: 'Teacher level retrieved successfully'
+    })
+  } catch (error) {
+    console.error('Get teacher level error:', error)
+    return errorResponse(500, 'Failed to get teacher level')
+  }
+}
+
+// Update teacher level
+async function updateTeacherLevel(event, user) {
+  try {
+    console.log('UpdateTeacherLevel called with:', { path: event.path, body: event.body, user: user.role })
+    const teacherId = parseInt(event.path.split('/')[3])
+    const { teacher_level } = JSON.parse(event.body)
+    
+    console.log('Parsed data:', { teacherId, teacher_level })
+
+    // Validate teacher_level
+    const validLevels = ['A1', 'A1+', 'A2', 'B1', 'B2', 'C1', 'C2']
+    if (teacher_level && !validLevels.includes(teacher_level)) {
+      console.log('Invalid teacher level:', teacher_level)
+      return errorResponse(400, 'Invalid teacher level')
+    }
+
+    const checkQuery = `
+      SELECT t.id, t.name, t.teacher_level
+      FROM teachers t
+      WHERE t.id = $1 AND t.is_active = true
+    `
+    const checkResult = await query(checkQuery, [teacherId])
+
+    if (checkResult.rows.length === 0) {
+      return errorResponse(404, 'Teacher not found')
+    }
+
+    const updateQuery = `
+      UPDATE teachers
+      SET teacher_level = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+    `
+    console.log('Executing update query:', updateQuery, [teacher_level, teacherId])
+    const result = await query(updateQuery, [teacher_level, teacherId])
+    console.log('Update result:', result.rows)
+    
+    return successResponse({ 
+      teacher: result.rows[0],
+      message: 'Teacher level updated successfully'
+    })
+  } catch (error) {
+    console.error('Update teacher level error:', error)
+    return errorResponse(500, 'Failed to update teacher level')
   }
 }

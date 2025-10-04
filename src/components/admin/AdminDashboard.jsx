@@ -3,6 +3,7 @@ import LastSyncIndicator from '../common/LastSyncIndicator'
 import { motion } from 'framer-motion'
 import apiService from '../../utils/api'
 import { getCurrentWeekStart, getWeekEnd } from '../../utils/dateUtils'
+import StudentLevelBadge from '../common/StudentLevelBadge'
 
 const AdminDashboard = () => {
   const [overview, setOverview] = useState(null)
@@ -303,10 +304,15 @@ const AdminDashboard = () => {
             <div key={index} className="flex items-center p-3 bg-neutral-50 rounded-lg">
               <div className="w-2 h-2 bg-success rounded-full mr-3"></div>
               <div className="flex-1">
-                <p className="text-sm text-neutral-800">
-                  <span className="font-medium">{activity.teacher_name}</span> completed lesson with{' '}
-                  <span className="font-medium">{activity.student_name}</span>
-                </p>
+                  <p className="text-sm text-neutral-800">
+                    <span className="font-medium">{activity.teacher_name}</span> completed lesson with{' '}
+                    <span className="font-medium">{activity.student_name}</span>
+                    {activity.student_level && (
+                      <span className="ml-2">
+                        <StudentLevelBadge level={activity.student_level} size="xs" />
+                      </span>
+                    )}
+                  </p>
                 <p className="text-xs text-neutral-600">
                   {new Date(activity.activity_date).toLocaleDateString()} at {activity.time_slot}
                 </p>
@@ -362,6 +368,11 @@ const AdminDashboard = () => {
                   <p className="text-sm text-neutral-800">
                     <span className="font-medium">{report.teacher_name}</span> submitted report for{' '}
                     <span className="font-medium">{report.student_name}</span>
+                    {report.student_level && (
+                      <span className="ml-2">
+                        <StudentLevelBadge level={report.student_level} size="xs" />
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-neutral-600 mb-2">
                     {new Date(report.lesson_date).toLocaleDateString()} at {report.time_slot}
@@ -415,7 +426,12 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">Student</label>
-                    <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-lg font-semibold text-neutral-800">{selectedReport.student_name}</p>
+                      {selectedReport.student_level && (
+                        <StudentLevelBadge level={selectedReport.student_level} />
+                      )}
+                    </div>
                   </div>
                 </div>
                 

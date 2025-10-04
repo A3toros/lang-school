@@ -5,6 +5,8 @@ import SuccessNotification from '../common/SuccessNotification'
 import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
 import TeacherManagementModal from './TeacherManagementModal'
 import PackageManagement from './PackageManagement'
+import StudentLevelBadge from '../common/StudentLevelBadge'
+import StudentLevelModal from '../common/StudentLevelModal'
 
 const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
   const [students, setStudents] = useState([])
@@ -45,6 +47,10 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
   const [isDeletingStudent, setIsDeletingStudent] = useState(false)
   const [showNotification, setShowNotification] = useState(false)
   const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
+  
+  // Student level modal state
+  const [showStudentLevelModal, setShowStudentLevelModal] = useState(false)
+  const [selectedStudentForLevel, setSelectedStudentForLevel] = useState(null)
   
   // Month/Week filtering state
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -133,6 +139,18 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
           studentsCount: response.students?.length, 
           total: response.total 
         })
+        
+        // Debug: Check if student_level is included in the data
+        const firstStudent = response.students?.[0]
+        if (firstStudent) {
+          console.log('🔍 [STUDENTS] First student data:', {
+            id: firstStudent.id,
+            name: firstStudent.name,
+            student_level: firstStudent.student_level,
+            hasStudentLevel: 'student_level' in firstStudent
+          })
+        }
+        
         setStudents(response.students)
         setPagination(prev => ({ ...prev, total: response.total }))
       }
@@ -825,13 +843,26 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
                   className={`hover:bg-gray-50 cursor-pointer ${selectedStudent?.id === student.id ? 'bg-primary-50' : ''}`}
                   onClick={() => {
                     onStudentSelect(student)
-                    fetchStudentStats(student.id)
                   }}
                   whileHover={{ scale: 1.01 }}
                   transition={{ duration: 0.2 }}
                 >
                   <td className="px-2 py-1 sm:px-3 sm:py-3 text-xs sm:text-base font-medium text-gray-900">
-                    <div className="truncate">{student.name}</div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedStudentForLevel(student)
+                          setShowStudentLevelModal(true)
+                        }}
+                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium cursor-pointer truncate"
+                      >
+                        {student.name}
+                      </button>
+                      {student.student_level && (
+                        <StudentLevelBadge level={student.student_level} size="xs" />
+                      )}
+                    </div>
                   </td>
                   <td className="px-2 py-1 sm:px-3 sm:py-3 text-xs sm:text-base text-gray-500">
                     {student.is_active ? (
@@ -986,86 +1017,6 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
         </div>
       )}
 
-      {/* Student Details Modal */}
-      {showStudentDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {selectedStudent?.name} - Lesson Statistics
-                </h3>
-                <button
-                  onClick={() => setShowStudentDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              <div className="mb-4 text-sm text-gray-600">
-                {filters.date_from && filters.date_to 
-                  ? `Period: ${filters.date_from} to ${filters.date_to}`
-                  : 'All time statistics'
-                }
-              </div>
-
-              {loadingStats ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-                </div>
-              ) : selectedStudentStats ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-green-50 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-green-600">
-                      {selectedStudentStats.completed || 0}
-                    </div>
-                    <div className="text-sm text-green-700">Completed</div>
-                  </div>
-                  <div className="p-4 bg-red-50 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-red-600">
-                      {selectedStudentStats.absent || 0}
-                    </div>
-                    <div className="text-sm text-red-700">I</div>
-                  </div>
-                  <div className="p-4 bg-yellow-50 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-yellow-600">
-                      {selectedStudentStats.warned || 0}
-                    </div>
-                    <div className="text-sm text-yellow-700">UI</div>
-                  </div>
-                  <div className="p-4 bg-blue-50 rounded-lg text-center">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {selectedStudentStats.total || 0}
-                    </div>
-                    <div className="text-sm text-blue-700">Total</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  No statistics available for this student.
-                </div>
-              )}
-
-              <div className="flex justify-end mt-6">
-                <button
-                  onClick={() => setShowStudentDetails(false)}
-                  className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
 
       {/* Status Change Confirmation Modal */}
       {showStatusConfirm && statusChangeData && (
@@ -1194,6 +1145,22 @@ const StudentManagement = ({ onStudentSelect, selectedStudent }) => {
               assignedTeachers={assignedTeachers}
               loading={teacherModalLoading}
             />
+
+      {/* Student Level Modal */}
+      <StudentLevelModal
+        isOpen={showStudentLevelModal}
+        onClose={() => setShowStudentLevelModal(false)}
+        student={selectedStudentForLevel}
+        onUpdate={(updatedStudent) => {
+          // Update the student in the local state
+          setStudents(prev => prev.map(s => 
+            s.id === updatedStudent.id ? updatedStudent : s
+          ))
+          setInactiveStudents(prev => prev.map(s => 
+            s.id === updatedStudent.id ? updatedStudent : s
+          ))
+        }}
+      />
     </div>
   )
 }

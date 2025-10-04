@@ -7,6 +7,7 @@ import SaveWarningModal from '../common/SaveWarningModal'
 import StudentSelectionModal from './StudentSelectionModal'
 import SuccessNotification from '../common/SuccessNotification'
 import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
+import StudentLevelBadge from '../common/StudentLevelBadge'
 import ExtensionReminder from './ExtensionReminder'
 
 const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
@@ -1501,6 +1502,11 @@ const ScheduleTable = ({ teacherId, weekStart, onWeekChange }) => {
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-2">
                 <strong>Student:</strong> {lessonReportData.schedule.student_name}
+                {lessonReportData.schedule.student_level && (
+                  <span className="ml-2">
+                    <StudentLevelBadge level={lessonReportData.schedule.student_level} size="xs" />
+                  </span>
+                )}
               </p>
               <p className="text-sm text-gray-600 mb-2">
                 <strong>Date:</strong> {(() => {

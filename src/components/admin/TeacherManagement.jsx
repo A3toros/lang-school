@@ -4,6 +4,8 @@ import apiService from '../../utils/api'
 import ImageUploader from '../common/ImageUploader'
 import SuccessNotification from '../common/SuccessNotification'
 import LoadingSpinnerModal from '../common/LoadingSpinnerModal'
+import TeacherLevelBadge from '../common/TeacherLevelBadge'
+import TeacherLevelModal from '../common/TeacherLevelModal'
 
 const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const [teachers, setTeachers] = useState([])
@@ -24,15 +26,13 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     meeting_id: '',
     meeting_password: ''
   })
-  const [showStatusConfirm, setShowStatusConfirm] = useState(false)
-  const [statusChangeData, setStatusChangeData] = useState(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteData, setDeleteData] = useState(null)
   const [isDeletingTeacher, setIsDeletingTeacher] = useState(false)
   const [showNotification, setShowNotification] = useState(false)
   const [notificationData, setNotificationData] = useState({ title: '', message: '', type: 'success' })
   const [isAddingTeacher, setIsAddingTeacher] = useState(false)
   const [isUpdatingTeacher, setIsUpdatingTeacher] = useState(false)
+  const [showTeacherLevelModal, setShowTeacherLevelModal] = useState(false)
+  const [selectedTeacherForLevel, setSelectedTeacherForLevel] = useState(null)
 
   useEffect(() => {
     if (activeTab === 'active') {
@@ -160,15 +160,8 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
     }
   }
 
-  const handleStatusChange = (teacher, newStatus) => {
-    setStatusChangeData({ teacher, newStatus })
-    setShowStatusConfirm(true)
-  }
-
-  const confirmStatusChange = async () => {
+  const handleStatusChange = async (teacher, newStatus) => {
     try {
-      const { teacher, newStatus } = statusChangeData
-      
       if (newStatus === false) {
         // Deactivating teacher
         const response = await apiService.deactivateTeacher(teacher.id)
@@ -192,24 +185,16 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
           showSuccessNotification('Success!', 'Teacher reactivated successfully', 'success')
         }
       }
-      
-      setShowStatusConfirm(false)
-      setStatusChangeData(null)
     } catch (error) {
       console.error('Error updating teacher status:', error)
       showSuccessNotification('Error', 'Error updating teacher status', 'error')
     }
   }
 
-  const handleHardDelete = (teacher) => {
-    setDeleteData(teacher)
-    setShowDeleteConfirm(true)
-  }
-
-  const confirmHardDelete = async () => {
+  const handleHardDelete = async (teacher) => {
     try {
       setIsDeletingTeacher(true)
-      const response = await apiService.deleteTeacher(deleteData.id)
+      const response = await apiService.deleteTeacher(teacher.id)
       if (response.success) {
         // Refresh both active and inactive teachers to get accurate counts
         await Promise.all([
@@ -218,8 +203,6 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         ])
         showSuccessNotification('Success!', 'Teacher deleted successfully - all data removed', 'success')
       }
-      setShowDeleteConfirm(false)
-      setDeleteData(null)
     } catch (error) {
       console.error('Error deleting teacher:', error)
       showSuccessNotification('Error', 'Error deleting teacher', 'error')
@@ -254,6 +237,16 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
   const openPasswordViewModal = (teacher) => {
     setEditingTeacher(teacher)
     setShowPasswordViewModal(true)
+  }
+
+  const handleTeacherLevelUpdate = (updatedTeacher) => {
+    // Update the teacher in the current list
+    setTeachers(prev => prev.map(teacher => 
+      teacher.id === updatedTeacher.id ? { ...teacher, teacher_level: updatedTeacher.teacher_level } : teacher
+    ))
+    setInactiveTeachers(prev => prev.map(teacher => 
+      teacher.id === updatedTeacher.id ? { ...teacher, teacher_level: updatedTeacher.teacher_level } : teacher
+    ))
   }
 
   return (
@@ -345,9 +338,21 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
                               </span>
                             )}
                           </div>
-                          <span className="text-2xs sm:text-xs md:text-sm font-medium text-neutral-800 truncate">
-                            {teacher.name}
-                          </span>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedTeacherForLevel(teacher)
+                                setShowTeacherLevelModal(true)
+                              }}
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-medium cursor-pointer truncate text-2xs sm:text-xs md:text-sm"
+                            >
+                              {teacher.name}
+                            </button>
+                            {teacher.teacher_level && (
+                              <TeacherLevelBadge level={teacher.teacher_level} size="xs" />
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-1 sm:px-2 md:px-4 py-1 sm:py-2">
@@ -705,105 +710,6 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
         />
       )}
 
-      {/* Status Change Confirmation Modal */}
-      {showStatusConfirm && statusChangeData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Confirm Status Change
-                </h3>
-                <button
-                  onClick={() => setShowStatusConfirm(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-gray-600 mb-4">
-                  Are you sure you want to {statusChangeData.newStatus ? 'reactivate' : 'deactivate'} teacher{' '}
-                  <span className="font-semibold">{statusChangeData.teacher.name}</span>?
-                </p>
-                
-              {!statusChangeData.newStatus && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-red-800 text-sm">
-                    <strong>Warning:</strong> Deactivating will unassign all students from this teacher and make them unavailable for new student assignments. Students will become unassigned but remain active.
-                  </p>
-                </div>
-              )}
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowStatusConfirm(false)}
-                  className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmStatusChange}
-                  className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
-                    statusChangeData.newStatus
-                      ? 'bg-green-500 hover:bg-green-600 text-white'
-                      : 'bg-red-500 hover:bg-red-600 text-white'
-                  }`}
-                >
-                  {statusChangeData.newStatus ? 'Reactivate' : 'Deactivate'}
-                </button>
-              </div>
-            </div>
-        </motion.div>
-      </div>
-    )}
-
-    {/* Hard Delete Confirmation Modal */}
-    <LoadingSpinnerModal
-      isOpen={showDeleteConfirm && !!deleteData}
-      onClose={() => setShowDeleteConfirm(false)}
-      title="⚠️ Permanent Deletion"
-      confirmText="Delete Permanently"
-      cancelText="Cancel"
-      onConfirm={confirmHardDelete}
-      loading={isDeletingTeacher}
-      loadingText="Deleting..."
-      confirmButtonColor="bg-red-500 hover:bg-red-600"
-      disabled={isDeletingTeacher}
-    >
-      {deleteData && (
-        <div className="mb-2">
-          <p className="text-gray-600 mb-4">
-            Are you sure you want to <strong>permanently delete</strong> teacher{' '}
-            <span className="font-semibold text-red-600">{deleteData.name}</span>?
-          </p>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800 text-sm font-semibold mb-2">
-              This action will permanently delete:
-            </p>
-            <ul className="text-red-700 text-sm space-y-1">
-              <li>• Teacher record and user account</li>
-              <li>• All lesson reports and attendance data</li>
-              <li>• All schedules (past and future)</li>
-              <li>• Schedule templates and history</li>
-              <li>• Teacher photo from Cloudinary</li>
-            </ul>
-            <p className="text-red-800 text-sm font-semibold mt-2">
-              This action cannot be undone!
-            </p>
-          </div>
-        </div>
-      )}
-    </LoadingSpinnerModal>
 
     {/* Success Notification */}
     <SuccessNotification
@@ -813,6 +719,14 @@ const TeacherManagement = ({ onTeacherSelect, selectedTeacher }) => {
       message={notificationData.message}
       type={notificationData.type}
       duration={4000}
+    />
+
+    {/* Teacher Level Modal */}
+    <TeacherLevelModal
+      isOpen={showTeacherLevelModal}
+      onClose={() => setShowTeacherLevelModal(false)}
+      teacher={selectedTeacherForLevel}
+      onUpdate={handleTeacherLevelUpdate}
     />
   </div>
   )
